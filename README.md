@@ -1,6 +1,6 @@
 # Blue Pyramid - WhatsApp to Excel Converter
 
-Converts WhatsApp chat exports from the BPR production floor into structured CSV/Excel spreadsheets.
+Converts WhatsApp chat exports from the BPR production floor into structured Excel workbooks.
 
 ## Quick Start
 
@@ -11,23 +11,51 @@ npm run dev
 
 Then open http://localhost:5173 in your browser.
 
-## How to Use
+## Parse Modes
 
-1. Pick the report type: **Baling Production** or **Cutting Data**
-2. Drag-and-drop (or paste) the exported WhatsApp `.txt` file
-3. Click **Parse Chat** to extract the data
-4. Review the preview table
-5. Click **Download CSV** — opens directly in Excel
+- `Baling Production`: dedicated baling parser + baling workbook writer.
+- `Cutting Data`: existing cutting parser and cutting workbook writer.
+
+The UI lets you choose baling vs cutting before parsing.
+
+## CLI Parse Command
+
+```bash
+npm run parse -- --type=cutting --format=old --input=./sample-data/WhatsApp_Chat_with_Blue_pyramid_recycling-_Cut_Tyres.txt --output=./tmp/cutting.json
+npm run parse -- --type=baling --input=./sample-data/WhatsApp_Chat_with_Blue_pyramid_recycling-_Baled_Finished_Goods.txt --output=./tmp/baling.json
+```
+
+Arguments:
+- `--type=cutting|baling`
+- `--format=old|new` (cutting only)
+- `--input=<chat.txt>`
+- `--output=<json-file>` (optional)
+
+## Project Structure
+
+- `src/parsing/cuttingParser.js`
+- `src/parsing/balingParser.js`
+- `src/parsing/commonParsingUtils.js`
+- `src/excel/cuttingExcelWriter.js`
+- `src/excel/balingExcelWriter.js`
+- `src/excel/createBalingWorkbook.js`
+- `src/excel/excelCommon.js`
+- `src/config/cuttingSchemas.js`
+- `src/config/balingSchemas.js`
+
+## Baling Workbook (Dedicated)
+
+Default filename in baling mode: `BPR_Baling_Data.xlsx`
+
+Sheets:
+- `Bales_Production`
+- `Failed_Bales`
+- `Scrap_Sidewalls`
+- `CR_CA_Tests`
+- `Daily_Summaries`
+- `Validation_Log`
 
 ## Sample Data
 
-The `sample-data/` folder contains real WhatsApp exports you can test with:
-- `WhatsApp_Chat_with_Blue_pyramid_recycling-_Baled_Finished_Goods.txt` → use with **Baling Production**
-- `WhatsApp_Chat_with_Blue_pyramid_recycling-_Cut_Tyres.txt` → use with **Cutting Data**
-
-## Debugging with Claude Code
-
-Open this folder in VS Code with the Claude Code extension, then ask Claude to help debug or extend the parsers. The parsing logic is all in `src/App.jsx`:
-- `parseBalingMessages()` — handles bale reports
-- `parseCuttingMessages()` — handles hourly cutting data
-- `generateBalingCSV()` / `generateCuttingCSV()` — output formatters
+- `sample-data/WhatsApp_Chat_with_Blue_pyramid_recycling-_Baled_Finished_Goods.txt`
+- `sample-data/WhatsApp_Chat_with_Blue_pyramid_recycling-_Cut_Tyres.txt`

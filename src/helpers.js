@@ -4,10 +4,11 @@ export function parseTime(str) {
   if (!str) return null;
   const cleaned = str.replace(/\./g, ":").replace(/[^0-9:]/g, "").trim();
   const parts = cleaned.split(":");
-  if (parts.length === 2) {
+  if (parts.length === 2 || parts.length === 3) {
     const h = parseInt(parts[0], 10);
     const m = parseInt(parts[1], 10);
-    if (!isNaN(h) && !isNaN(m)) return { h, m };
+    const s = parts.length === 3 ? parseInt(parts[2], 10) : 0;
+    if (!isNaN(h) && !isNaN(m) && !isNaN(s)) return { h, m, s };
   }
   return null;
 }

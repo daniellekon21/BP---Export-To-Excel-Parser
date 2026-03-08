@@ -1,0 +1,90 @@
+Baling Parser Performance Report
+Input: /Users/daniellekonfino/Desktop/BP/whatsapp_to_excel_proj/bpr-whatsapp-parser/sample-data/WhatsApp_Chat_with_Blue_pyramid_recycling-_Baled_Finished_Goods.txt
+
+Overview
+- Total WhatsApp messages: 10959
+- Candidate production/summary messages: 6051
+- Parsed rows emitted (all sheets): 5497
+- Parsed clean rows (no warnings): 5138
+- Validation log entries: 376 (INFO 63, WARNING 313, ERROR 0)
+
+What Works Well
+- Standard bales parsed: 981
+- Failed bales parsed: 38
+- Scrap sidewall records parsed: 23
+- CR/CA or test records parsed: 4098
+- Daily summaries parsed: 357
+- Candidate coverage: 90.8%
+- Clean row ratio: 93.5%
+
+Score
+- Overall score: 92/100
+- Formula: coverage 35% + cleanliness 45% + error/warning penalties
+
+Problematic Texts / Rows
+- SUMMARY_PARSE_PARTIAL: 120
+  • Unknown category segment: "Treads - 120"
+    Msg: *Daily summary:* 10/12/2024 29 - Passenger Bales Passenger - 1706 4x4 - 913 Total Tyres - 2619 27110kg 27.110tons 5 - CA (Agricultural) Treads Qty - 120 Side Wall Qty - …
+  • Unknown category segment: "Treads - 96"
+    Msg: *Daily summary:* 04/02/2025 12- PB (PCR) Passenger - 565 Light commercial - 96 Passenger (PS) - 421 Side Wall - 68 11288 kg 11.288 tons 01- CRC (Cut Radial) Heavy Commer…
+  • Unknown category segment: "Treads - 304"
+    Msg: *Daily summary:* 05/02/2025 13- PB (PCR) Passenger - 444 4x4 - 464 Passenger (PS) - 79 Side Wall - 23 12129 kg 12.129 tons 05 - CRs (Scrap adial) Heavy Commercial (PS) -…
+- TOTAL_QTY_MISMATCH: 73
+  • Total Qty mismatch: declared 72, parsed 71
+    Msg: Machine One Date - 30/09/2024 B143 - Production Operator - Donna Assistant - Sanele Start time - 14:08 Finish time -14:22 Item - 4x4 Qty - 71 Total Qty - 72 Weight - 102…
+  • Total Qty mismatch: declared 43, parsed 46
+    Msg: Machine Two Date - 18/10/2024 B329 - Production Operator - Bhekinkosi Assistant - Bhekisisa Start time - 11:20 Finish time - 11:36 Item - Light Commercial Qty - 36 Passe…
+  • Total Qty mismatch: declared 42, parsed 43
+    Msg: Machine Two Date - 18/10/2024 B341 - Production Operator - Lalelani Assistant - Bhekinkosi Start time - 14:25 Finish time - 14:42 Item - Light Commercial Qty - 43 Total …
+- UNKNOWN_CATEGORY: 53
+  • Unknown category segment: "LCT-45"
+    Msg: Machine 1 12/12/2024 CR011-12/2024- Production Operator-Bhekinkosi Assistant- Vincent Start time - 08:28 Finish time-08:49 Process-21 mins LCT-45 SW-30 Weight- 891kg
+  • Unknown category segment: "HC (Treads) - 40"
+    Msg: Machine 2 16/01/2025 CR215 - 01/2025 Operator-Vincent Assistant-Anderson Start time - 16:24 Finish time - 16:57 Process - 33 mins HC (Treads) - 40 Weight 1109 kg <This m…
+  • Unknown category segment: "Treads- 37"
+    Msg: Machine 1 29/01/2025 CA010 - 01/2025 Operator- Bhekinkosi Assistant- Zamani Start time -09:35 Finish time - 09:50 Process - 15 mins Treads- 37 SW- 22 Weight -868kg
+- FAILED_BALE_REROUTED: 38
+  • Failed bale detected and routed to Failed_Bales
+    Msg: We must report failed bails separately - Change B43 to B42 and B44 to B43 A failed bale is not a bale We will only report to account for lost time and consumables etc
+  • Failed bale detected and routed to Failed_Bales
+    Msg: Machine Two Date - 23/09/2024 Failed Bale - Wire's snapped Operator - Donna Assistant - Menzi Start time - 09:00 Finish time - 09:20
+  • Failed bale detected and routed to Failed_Bales
+    Msg: Machine Two Failed Bale due to wire snapped Date - 30/09/2024 Operator - Lange Assistant - Philani Start time - 11:23 Finish time -11:40 Item 4x4 - 72 Total Qty - 72 Wei…
+- TIME_SEQUENCE_INVALID: 27
+  • Finish before start (13:06 -> 11:23)
+    Msg: Machine Two Date - 28/09/2024 B112- Production Operator - Andile Assistant - Bongumusa Start time - 13:06 Finish time -11:23 Item - 4x4 Qty - 81 Total Qty - 81 Weight - …
+  • Finish before start (13:06 -> 11:23)
+    Msg: Machine Two Date - 07/11/2024 B659- Production Operator - Andile Assistant - Bongumusa Start time - 13:06 Finish time -11:23 Item - 4x4 Qty - 81 Total Qty - 81 Weight - …
+  • Finish before start (10:55 -> 10:15)
+    Msg: Machine 1 04/12/2024 CA001 12/2024- Production Operator- Bhekinkosi Assistant- Bhekisisa Start time- 10:55 Finish time-10:15 Process- 20 min T- 48 SW- 4 Weight- 880kg
+- ROW_EMITTED_FALLBACK: 25
+  • Explicit test bale rerouted from standard production
+    Msg: B1 - Test Operator - Donna Assistant - Andile Start time - 12:29 Finish time - 13:01 Item - Passenger Qty - 110, 4x4 Qty - 2 Total Qty 112 Weight - 912 kg
+  • Explicit test bale rerouted from standard production
+    Msg: B2 - Test Date 18/09/24 Operator - Menzi Assistant - Andile Start time - 09:10 Finish time - 09:34 Item - Passenger Qty - 120 Total Qty 120 Weight - 906 kg
+  • Explicit test bale rerouted from standard production
+    Msg: B3 - Test Date 13/09/24 Operator - Menzi Assistant - Langa Start time - 13:50 Finish time - 14:19 Item - Passenger Qty - 48, 4x4 Qty - 37 Total Qty 85 Weight - 895 kg
+- MISSING_WEIGHT: 22
+  • Missing weight on successful bale
+    Msg: B42 is missing?
+  • Missing weight for scrap record
+    Msg: Slmz, please note that SR (Scrap Radial walls) are now CR (Cut Radials) as they are captured on the Tbr spreadsheet, not to cause any confusion going forward. SR - 01 is…
+  • Missing weight on successful bale
+    Msg: Machine 1 27/11/2024 B695 Operator- Andile Assistant- Bhekicele Start time- 08:53 Finish time- 09:20 Process- 27 min P-31 4x4-42 Total-73 899kg
+- SCRAP_QTY_MISSING: 13
+  • Missing scrap quantity
+    Msg: Machine 1 08/01/2025 CR063-01/2025 Operator- Bhekinkosi Assistant- Vincent Start time-09:14 Finish time-09:45 Process-31 mins HC(PS)-23 Weight-1052 kg Difficulty loading…
+  • Missing scrap quantity
+    Msg: 08/01/2025 08:00-10:00 8x HC scrap bales
+  • Missing scrap quantity
+    Msg: 08/01/2025 10:00-12:00 8x HC Scrap bales
+- DUPLICATE_BALE_NUMBER: 5
+  • Duplicate bale number on same date (B60); latest kept
+    Msg: Machine one Date - 23/09/2024 B60- Production Operator - Menzi Assistant - Donna Start time - 15:20 Finish time - 15:38 Item - Passenger Qty - 115 Total Qty 115 Weight -…
+  • Duplicate bale number on same date (B389); latest kept
+    Msg: Machine One Date - 23/10/2024 B 389 - Production Operator - Donna Assistant - Bongumusa Start time - 13:08 Finish time -13:29 Item - Passengers - 125 Total Qty -125 Weig…
+  • Duplicate bale number on same date (B391); latest kept
+    Msg: Machine Two Date - 23/10/2024 B 391 - Production Operator - Andile Assistant - Bheki Start time - 14:07 Finish time -14:24 Item - Passengers - 125 Total Qty -125 Weight …
+
+High-Risk Gaps
+- No ERROR-severity items logged.

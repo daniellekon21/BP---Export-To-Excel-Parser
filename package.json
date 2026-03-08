@@ -6,7 +6,10 @@
   "scripts": {
     "dev": "vite",
     "build": "vite build",
-    "preview": "vite preview"
+    "preview": "vite preview",
+    "parse": "node parse_chat.mjs",
+    "parse:cutting": "node parse_chat.mjs --type=cutting --format=old",
+    "parse:baling": "node parse_chat.mjs --type=baling"
   },
   "dependencies": {
     "exceljs": "^4.4.0",
