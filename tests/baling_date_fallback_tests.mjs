@@ -36,3 +36,14 @@ run("time parsing supports optional seconds and defaults to :00", () => {
   assert.equal(r.finishTime.m, 29);
   assert.equal(r.finishTime.s, 15);
 });
+
+run("standalone body date line is used over WhatsApp timestamp date", () => {
+  const chat = "2025/07/03, 09:59 - Tester: Machine 1\n02/07/2025\nCA015-07/25\nOperator-Bhekisisa\nAssistant-Bhekinosi\nStart time-09:38\nFinish time-09:58\nProcess-20 mins\nT-43\nWeight-925kg";
+  const parsed = parseBalingMessages(chat);
+
+  assert.equal(parsed.crcaRecords.length, 1);
+  const r = parsed.crcaRecords[0];
+  assert.equal(r.chatDateParsed.year, 2025);
+  assert.equal(r.chatDateParsed.month, 7);
+  assert.equal(r.chatDateParsed.day, 2);
+});

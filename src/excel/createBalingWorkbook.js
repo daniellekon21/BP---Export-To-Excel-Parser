@@ -1,13 +1,80 @@
 import { dateSortKey, dateToStr, monthLabel } from "../helpers.js";
 import {
   BALING_SHEET_NAMES,
-  BALING_PRODUCTION_HEADERS,
   BALING_FAILED_HEADERS,
   BALING_SCRAP_HEADERS,
   BALING_CRCA_HEADERS,
   BALING_SUMMARY_HEADERS,
 } from "../config/balingSchemas.js";
 import { baseStyles, styleHeaderRow, styleBodyRows, applyColumnWidths } from "./excelCommon.js";
+
+const EXAMPLE_PROD_HEADER_ROW2 = [
+  "",
+  "Date",
+  "Baling Machine \nNumber",
+  "Bale Type",
+  "Bale Number",
+  "Bale Series\nM/Y",
+  "Baler Operator",
+  "Assistant Baler Operator",
+  "Start Time",
+  "Finish Time",
+  "Total Time to Bale",
+  "Passenger",
+  "4 X 4",
+  "Motorcylce",
+  "Light Commercial",
+  "Light Commercial T",
+  "Light Commercial SW",
+  "Heavy Commercial T",
+  "Heavy Commercial SW",
+  "Total Number of T",
+  "Total Number of SW",
+  "Agricultural T",
+  "Agricultural SW",
+  "Heavy Commercial T",
+  "Heavy Commercial SW",
+  "Total Number of Nylon T",
+  "Total Number of Nylon SW",
+  "Total Number of Tyres",
+  "Bale Weight\nKG",
+  "Bale Weight\nTONS",
+  "Raw Text",
+];
+
+const EXAMPLE_PROD_HEADER_ROW3 = [
+  "",
+  "",
+  "",
+  "",
+  "",
+  "",
+  "",
+  "",
+  "",
+  "",
+  "",
+  "PCR",
+  "",
+  "",
+  "",
+  "RADIALS",
+  "",
+  "",
+  "",
+  "",
+  "",
+  "NYLONS",
+  "",
+  "",
+  "",
+  "",
+  "",
+  "",
+  "",
+  "",
+  "",
+];
 
 function sortByDateAndTime(records) {
   const baleSortKey = (row) => {
@@ -125,24 +192,57 @@ function applyDurationTrafficLight(ws, durationColumnIndex, fromRow = 2) {
 }
 
 function addProductionGroupedHeader(ws) {
-  const headerLen = BALING_PRODUCTION_HEADERS.length;
-  const top = new Array(headerLen).fill("");
-  const sub = new Array(headerLen).fill("");
+  ws.addRow(new Array(EXAMPLE_PROD_HEADER_ROW2.length).fill(""));
+  ws.addRow(EXAMPLE_PROD_HEADER_ROW2);
+  ws.addRow(EXAMPLE_PROD_HEADER_ROW3);
+  // Match template behavior: sublabels are centered across grouped blocks.
+  ws.mergeCells(3, 12, 3, 15); // L3:O3 -> PCR
+  ws.mergeCells(3, 16, 3, 21); // P3:U3 -> RADIALS
+  ws.mergeCells(3, 22, 3, 27); // V3:AA3 -> NYLONS
+}
 
-  for (let i = 0; i < headerLen; i += 1) {
-    const col = i + 1;
-    const label = BALING_PRODUCTION_HEADERS[i];
-    if (col >= 11 && col <= 13) {
-      sub[i] = label;
-    } else {
-      top[i] = label;
+function styleProductionHeader(ws, styles) {
+  const thin = styles.thinBlack;
+  const medium = styles.mediumBlack;
+  const groupStarts = new Set([2, 12, 16, 22, 28, 31]); // B, L, P, V, AB, AE
+  const groupEnds = new Set([11, 15, 21, 27, 30, 31]); // K, O, U, AA, AD, AE
+
+  const fills = [
+    { from: 2, to: 15, fgColor: { theme: 4, tint: 0.7999511703848384 } }, // B:O light blue
+    { from: 16, to: 21, fgColor: { argb: "FFE97132" } }, // P:U RADIALS
+    { from: 22, to: 27, fgColor: { argb: "FF0D8ABA" } }, // V:AA NYLONS
+    { from: 28, to: 30, fgColor: { theme: 4, tint: 0.7999511703848384 } }, // AB:AD same as PCR
+    { from: 31, to: 31, fgColor: { theme: 4, tint: 0.7999511703848384 } }, // AE same as PCR
+  ];
+
+  const fillForCol = (col) => fills.find((f) => col >= f.from && col <= f.to)?.fgColor || { theme: 4, tint: 0.7999511703848384 };
+
+  ws.getRow(2).height = 48;
+  ws.getRow(3).height = 17;
+
+  for (let row = 2; row <= 3; row += 1) {
+    for (let col = 2; col <= 31; col += 1) {
+      const cell = ws.getRow(row).getCell(col);
+      const isRadials = col >= 16 && col <= 21;
+      const isNylons = col >= 22 && col <= 27;
+      cell.font = {
+        bold: true,
+        size: 11,
+        color: (isRadials || isNylons) ? { argb: "FF000000" } : { theme: 1 },
+        name: "Aptos Narrow",
+        family: 2,
+        scheme: "minor",
+      };
+      cell.alignment = { horizontal: "center", vertical: "middle", wrapText: row === 2 };
+      cell.fill = { type: "pattern", pattern: "solid", fgColor: fillForCol(col), bgColor: { indexed: 64 } };
+      cell.border = {
+        left: groupStarts.has(col) ? medium : thin,
+        right: groupEnds.has(col) ? medium : thin,
+        top: row === 2 ? medium : thin,
+        bottom: row === 3 ? medium : thin,
+      };
     }
   }
-
-  top[10] = "Input Materials - No. of Tyres";
-  ws.addRow(top);
-  ws.addRow(sub);
-  ws.mergeCells(1, 11, 1, 13);
 }
 
 function applyNumericFormatting(ws, numericColumns) {
@@ -172,6 +272,17 @@ function resolvedTotalQty(r) {
   const sum = componentQtySum(r);
   if (sum !== null) return sum;
   return r.totalQty ?? null;
+}
+
+function resolvedWeightTons(r) {
+  const kg = Number(r?.weightKg);
+  if (!Number.isFinite(kg)) return null;
+  return Math.round((kg / 1000) * 1000) / 1000;
+}
+
+function dateToMonthYear(d) {
+  if (!d || !Number.isInteger(d.month) || !Number.isInteger(d.year)) return "";
+  return `${String(d.month).padStart(2, "0")}/${String(d.year).slice(-2)}`;
 }
 
 function isUsableDate(d) {
@@ -208,11 +319,12 @@ function appendProductionRow(ws, r) {
     (r.failureType ? "FAILED" : (r.baleTestCode ? "CR_CA" : (r.scrapType ? "SCRAP" : "STANDARD")));
 
   ws.addRow([
+    "",
     dateToStr(r.chatDateParsed),
     r.machine || "",
+    r.productionType || r.testType || effectiveRecordType,
     r.baleNumber || r.baleTestCode || "",
-    effectiveRecordType,
-    r.productionType || r.testType || (effectiveRecordType === "STANDARD" ? "Production" : ""),
+    dateToMonthYear(r.chatDateParsed || r.date),
     r.operator || "",
     r.assistant || "",
     formatTimeWithSeconds(r.startTime),
@@ -220,17 +332,85 @@ function appendProductionRow(ws, r) {
     formatDurationForRow(r),
     num(r.passengerQty),
     num(r.fourx4Qty),
-    num(r.lcQty),
     num(r.motorcycleQty),
-    num(r.srQty),
-    num(r.agriQty),
+    num(r.lcQty),
+    "",
+    "",
+    "",
+    "",
     num(r.treadQty),
     num(r.sideWallQty),
-    r.otherItemRaw || "",
+    num(r.agriQty),
+    "",
+    "",
+    "",
+    "",
+    "",
     num(resolvedTotalQty(r)),
     num(r.weightKg),
-    r.notesFlags || "",
+    num(resolvedWeightTons(r)),
     r.rawMessage || "",
+  ]);
+}
+
+function sumNumeric(rows, getter) {
+  return rows.reduce((acc, row) => {
+    const v = Number(getter(row));
+    return Number.isFinite(v) ? acc + v : acc;
+  }, 0);
+}
+
+function appendProductionTotalsRow(ws, rows) {
+  const durationValues = rows
+    .map((r) => durationSecondsFromRow(r))
+    .filter((v) => Number.isFinite(v) && v >= 0);
+  const avgDurationSec = durationValues.length
+    ? Math.round(durationValues.reduce((a, b) => a + b, 0) / durationValues.length)
+    : null;
+
+  const totalPassenger = sumNumeric(rows, (r) => r.passengerQty);
+  const total4x4 = sumNumeric(rows, (r) => r.fourx4Qty);
+  const totalMotorcycle = sumNumeric(rows, (r) => r.motorcycleQty);
+  const totalLc = sumNumeric(rows, (r) => r.lcQty);
+  const totalTread = sumNumeric(rows, (r) => r.treadQty);
+  const totalSideWall = sumNumeric(rows, (r) => r.sideWallQty);
+  const totalAgri = sumNumeric(rows, (r) => r.agriQty);
+  const totalTyres = sumNumeric(rows, (r) => resolvedTotalQty(r));
+  const totalWeightKg = sumNumeric(rows, (r) => r.weightKg);
+  const totalWeightTons = Math.round((totalWeightKg / 1000) * 1000) / 1000;
+
+  ws.addRow([
+    "",
+    "TOTALS",
+    "",
+    "",
+    "",
+    "",
+    "",
+    "",
+    "",
+    "",
+    avgDurationSec !== null ? formatSecondsAsHHMMSS(avgDurationSec) : "",
+    totalPassenger || "",
+    total4x4 || "",
+    totalMotorcycle || "",
+    totalLc || "",
+    "",
+    "",
+    "",
+    "",
+    totalTread || "",
+    totalSideWall || "",
+    totalAgri || "",
+    "",
+    "",
+    "",
+    "",
+    "",
+    totalTyres || "",
+    totalWeightKg || "",
+    totalWeightTons || "",
+    "",
   ]);
 }
 
@@ -264,20 +444,22 @@ export async function createBalingWorkbook(data = {}) {
     addProductionGroupedHeader(ws);
     const monthRows = sortByDateAndTime(byMonth.get(key));
     for (const r of monthRows) appendProductionRow(ws, r);
+    appendProductionTotalsRow(ws, monthRows);
     monthSheets.push(ws);
   }
 
   let reviewWs = null;
   if (invalidDatedProductionRows.length > 0) {
     reviewWs = wb.addWorksheet("Review_Missing_Date");
-    reviewWs.addRow([...BALING_PRODUCTION_HEADERS, "Review Reason"]);
+    reviewWs.addRow([...EXAMPLE_PROD_HEADER_ROW2, "Review Reason"]);
     for (const r of invalidDatedProductionRows) {
       reviewWs.addRow([
         "",
+        "",
         r.machine || "",
-        r.baleNumber || "",
-        r.recordType || "STANDARD",
         r.productionType || "Production",
+        r.baleNumber || "",
+        "",
         r.operator || "",
         r.assistant || "",
         formatTimeWithSeconds(r.startTime),
@@ -285,16 +467,23 @@ export async function createBalingWorkbook(data = {}) {
         formatDurationForRow(r),
         num(r.passengerQty),
         num(r.fourx4Qty),
-        num(r.lcQty),
         num(r.motorcycleQty),
-        num(r.srQty),
-        num(r.agriQty),
+        num(r.lcQty),
+        "",
+        "",
+        "",
+        "",
         num(r.treadQty),
         num(r.sideWallQty),
-        r.otherItemRaw || "",
+        num(r.agriQty),
+        "",
+        "",
+        "",
+        "",
+        "",
         num(resolvedTotalQty(r)),
         num(r.weightKg),
-        r.notesFlags || "",
+        num(resolvedWeightTons(r)),
         r.rawMessage || "",
         "Missing or invalid parsed date - month routing skipped",
       ]);
@@ -447,11 +636,10 @@ export async function createBalingWorkbook(data = {}) {
   if (reviewWs) sheets.push(reviewWs);
   for (const ws of sheets) {
     if (monthSheets.includes(ws)) {
-      styleHeaderRow(ws.getRow(1), styles, false);
-      styleHeaderRow(ws.getRow(2), styles, false);
-      styleBodyRows(ws, 3, ws.rowCount, styles.baseBorder);
-      ws.views = [{ state: "frozen", ySplit: 2 }];
-      ws.autoFilter = { from: { row: 1, column: 1 }, to: { row: 1, column: ws.columnCount } };
+      styleProductionHeader(ws, styles);
+      styleBodyRows(ws, 4, ws.rowCount, styles.baseBorder);
+      ws.views = [{ state: "frozen", xSplit: 1, ySplit: 3, topLeftCell: "B4" }];
+      ws.autoFilter = { from: { row: 2, column: 2 }, to: { row: 2, column: 31 } };
     } else {
       styleHeaderRow(ws.getRow(1), styles, false);
       styleBodyRows(ws, 2, ws.rowCount, styles.baseBorder);
@@ -461,26 +649,62 @@ export async function createBalingWorkbook(data = {}) {
   }
 
   for (const ws of monthSheets) {
-    applyColumnWidths(ws, [14, 14, 10, 12, 12, 18, 18, 10, 10, 10, 10, 10, 10, 12, 10, 10, 10, 12, 28, 10, 10, 28, 80]);
-    applyNumericFormatting(ws, [11, 12, 13, 14, 15, 16, 17, 18, 20, 21]);
+    applyColumnWidths(ws, [
+      13,
+      10.6640625,
+      13,
+      10.1640625,
+      12.5,
+      13,
+      14.5,
+      16.1640625,
+      11.5,
+      12.5,
+      16.83203125,
+      10.83203125,
+      13,
+      11.5,
+      17.33203125,
+      17.5,
+      19.1640625,
+      18.6640625,
+      21,
+      17.5,
+      18.6640625,
+      14.1640625,
+      15.1640625,
+      18.6640625,
+      20.33203125,
+      23.1640625,
+      25,
+      20.83203125,
+      13,
+      13,
+      65,
+    ]);
+    applyNumericFormatting(ws, [12, 13, 14, 15, 20, 21, 22, 28, 29, 30]);
+    ws.getColumn(30).numFmt = "0.000";
   }
   applyColumnWidths(failedWs, [14, 14, 10, 14, 22, 18, 18, 10, 10, 10, 10, 10, 10, 12, 10, 10, 12, 10, 10, 28, 80]);
   applyColumnWidths(scrapWs, [14, 14, 24, 10, 20, 10, 10, 18, 18, 10, 10, 28, 80]);
   applyColumnWidths(crcaWs, [14, 14, 18, 10, 10, 18, 18, 10, 10, 10, 10, 12, 10, 10, 10, 12, 10, 10, 10, 28, 80]);
   applyColumnWidths(summaryWs, [14, 24, 14, 10, 10, 10, 10, 10, 10, 12, 10, 10, 10, 12, 10, 16, 16, 16, 16, 28, 80]);
   applyColumnWidths(logWs, [10, 22, 14, 14, 18, 20, 44, 90]);
-  if (reviewWs) applyColumnWidths(reviewWs, [14, 14, 10, 12, 12, 18, 18, 10, 10, 10, 10, 10, 10, 12, 10, 10, 10, 12, 28, 10, 10, 28, 80, 42]);
+  if (reviewWs) applyColumnWidths(reviewWs, [13, 10.6640625, 13, 10.1640625, 12.5, 13, 14.5, 16.1640625, 11.5, 12.5, 16.83203125, 10.83203125, 13, 11.5, 17.33203125, 17.5, 19.1640625, 18.6640625, 21, 17.5, 18.6640625, 14.1640625, 15.1640625, 18.6640625, 20.33203125, 23.1640625, 25, 20.83203125, 13, 13, 65, 42]);
 
   // Numeric formatting for qty/weight/duration columns.
   applyNumericFormatting(failedWs, [10, 11, 12, 13, 14, 15, 16, 17, 18, 19]);
   applyNumericFormatting(scrapWs, [6, 7]);
   applyNumericFormatting(crcaWs, [11, 12, 13, 14, 15, 16, 17, 18, 19]);
   applyNumericFormatting(summaryWs, [4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15]);
-  if (reviewWs) applyNumericFormatting(reviewWs, [11, 12, 13, 14, 15, 16, 17, 18, 20, 21]);
+  if (reviewWs) {
+    applyNumericFormatting(reviewWs, [12, 13, 14, 15, 20, 21, 22, 28, 29, 30]);
+    reviewWs.getColumn(30).numFmt = "0.000";
+  }
 
-  for (const ws of monthSheets) applyDurationTrafficLight(ws, 10, 3);
+  for (const ws of monthSheets) applyDurationTrafficLight(ws, 11, 4);
   applyDurationTrafficLight(crcaWs, 10);
-  if (reviewWs) applyDurationTrafficLight(reviewWs, 10);
+  if (reviewWs) applyDurationTrafficLight(reviewWs, 11);
 
   return wb;
 }

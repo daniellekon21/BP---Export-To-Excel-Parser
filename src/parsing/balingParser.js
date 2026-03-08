@@ -15,12 +15,17 @@ function tsToString(tsDate) {
 
 function extractBodyDate(body) {
   const text = String(body || "");
-  const m = text.match(/\bdate\s*[:\-]\s*(\d{1,2})\/(\d{1,2})\/(\d{4})\b/i);
+  let m = text.match(/\bdate\s*[:\-]\s*(\d{1,2})\/(\d{1,2})\/(\d{2,4})\b/i);
+  // Common real-world variant: a standalone line with date only (no "Date -" label).
+  if (!m) m = text.match(/(?:^|\n)\s*(\d{1,2})\/(\d{1,2})\/(\d{2,4})\s*(?:\n|$)/i);
   if (!m) return null;
+
+  const parsedYear = parseInt(m[3], 10);
+  const year = m[3].length === 2 ? (2000 + parsedYear) : parsedYear;
   return {
     day: parseInt(m[1], 10),
     month: parseInt(m[2], 10),
-    year: parseInt(m[3], 10),
+    year,
   };
 }
 

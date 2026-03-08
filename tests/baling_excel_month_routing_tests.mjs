@@ -49,8 +49,8 @@ run("2) same-month rows are grouped into one sheet", async () => {
 
   const jan = wb.getWorksheet("Jan 2025");
   assert.ok(jan);
-  // 2 header rows + 2 data rows
-  assert.equal(jan.rowCount, 4);
+  // 3 header rows + 2 data rows + 1 totals row
+  assert.equal(jan.rowCount, 6);
 });
 
 run("3) month sheets are in chronological order", async () => {
@@ -98,7 +98,7 @@ run("5) no production row is silently lost", async () => {
   const wb = await createBalingWorkbook({ standardRecords: rows });
   const prodCount = wb.worksheets
     .filter((w) => /^([A-Z][a-z]{2} \d{4})$/.test(w.name))
-    .reduce((sum, w) => sum + Math.max(0, w.rowCount - 2), 0);
+    .reduce((sum, w) => sum + Math.max(0, w.rowCount - 4), 0);
   const review = wb.getWorksheet("Review_Missing_Date");
   const reviewCount = review ? Math.max(0, review.rowCount - 1) : 0;
 
@@ -137,8 +137,8 @@ run("7) total qty is auto-corrected to computed category sum", async () => {
 
   const ws = wb.getWorksheet("Oct 2024");
   assert.ok(ws);
-  // column 20 = Total Qty
-  assert.equal(ws.getRow(3).getCell(20).value, 46);
+  // column 28 = Total Number of Tyres
+  assert.equal(ws.getRow(4).getCell(28).value, 46);
 });
 
 run("8) rows are sorted by date then bale number (numeric)", async () => {
@@ -153,12 +153,12 @@ run("8) rows are sorted by date then bale number (numeric)", async () => {
 
   const ws = wb.getWorksheet("Sep 2024");
   assert.ok(ws);
-  // col 1 = date, col 3 = bale number
-  assert.equal(ws.getRow(3).getCell(1).value, "24/09/2024");
-  assert.equal(ws.getRow(3).getCell(3).value, "B100");
-  assert.equal(ws.getRow(4).getCell(3).value, "B3");
-  assert.equal(ws.getRow(5).getCell(3).value, "B20");
-  assert.equal(ws.getRow(6).getCell(3).value, "B100");
+  // col 2 = date, col 5 = bale number
+  assert.equal(ws.getRow(4).getCell(2).value, "24/09/2024");
+  assert.equal(ws.getRow(4).getCell(5).value, "B100");
+  assert.equal(ws.getRow(5).getCell(5).value, "B3");
+  assert.equal(ws.getRow(6).getCell(5).value, "B20");
+  assert.equal(ws.getRow(7).getCell(5).value, "B100");
 });
 
 run("9) start/finish times are exported as HH:MM:SS (default :00)", async () => {
@@ -174,12 +174,12 @@ run("9) start/finish times are exported as HH:MM:SS (default :00)", async () => 
 
   const ws = wb.getWorksheet("Sep 2024");
   assert.ok(ws);
-  // col 8 = Start Time, col 9 = Finish Time
-  assert.equal(ws.getRow(3).getCell(8).value, "09:05:00");
-  assert.equal(ws.getRow(3).getCell(9).value, "09:28:13");
-  // col 10 = Total Time to Bale
-  assert.equal(ws.getRow(1).getCell(10).value, "Total Time to Bale");
-  assert.equal(ws.getRow(3).getCell(10).value, "00:23:13");
+  // col 9 = Start Time, col 10 = Finish Time
+  assert.equal(ws.getRow(4).getCell(9).value, "09:05:00");
+  assert.equal(ws.getRow(4).getCell(10).value, "09:28:13");
+  // col 11 = Total Time to Bale
+  assert.equal(ws.getRow(2).getCell(11).value, "Total Time to Bale");
+  assert.equal(ws.getRow(4).getCell(11).value, "00:23:13");
 });
 
 run("10) Total Time to Bale color traffic-light is applied", async () => {
@@ -205,20 +205,73 @@ run("10) Total Time to Bale color traffic-light is applied", async () => {
 
   const ws = wb.getWorksheet("Sep 2024");
   assert.ok(ws);
-  assert.equal(ws.getRow(3).getCell(10).fill.fgColor.argb, "FFC6EFCE");
-  assert.equal(ws.getRow(4).getCell(10).fill.fgColor.argb, "FFFFE699");
-  assert.equal(ws.getRow(5).getCell(10).fill.fgColor.argb, "FFF4CCCC");
+  assert.equal(ws.getRow(4).getCell(11).fill.fgColor.argb, "FFC6EFCE");
+  assert.equal(ws.getRow(5).getCell(11).fill.fgColor.argb, "FFFFE699");
+  assert.equal(ws.getRow(6).getCell(11).fill.fgColor.argb, "FFF4CCCC");
 });
 
-run("11) grouped input materials header spans Passenger/4x4/LC only", async () => {
+run("11) header follows example input-material wording and sublabels", async () => {
   const wb = await createBalingWorkbook({
     standardRecords: [mkRow({ y: 2024, m: 9, d: 25, bale: "B900" })],
   });
 
   const ws = wb.getWorksheet("Sep 2024");
   assert.ok(ws);
-  assert.equal(ws.getRow(1).getCell(11).value, "Input Materials - No. of Tyres");
-  assert.equal(ws.getRow(2).getCell(11).value, "Passenger");
-  assert.equal(ws.getRow(2).getCell(12).value, "4 x 4");
-  assert.equal(ws.getRow(2).getCell(13).value, "LC");
+  assert.equal(ws.getRow(2).getCell(12).value, "Passenger");
+  assert.equal(ws.getRow(2).getCell(13).value, "4 X 4");
+  assert.equal(ws.getRow(2).getCell(15).value, "Light Commercial");
+  assert.equal(ws.getRow(3).getCell(12).value, "PCR");
+  assert.equal(ws.getRow(3).getCell(16).value, "RADIALS");
+  assert.equal(ws.getRow(3).getCell(22).value, "NYLONS");
+});
+
+run("12) production headers renamed and Bale Weight TONS is calculated from KG", async () => {
+  const wb = await createBalingWorkbook({
+    standardRecords: [
+      {
+        ...mkRow({ y: 2024, m: 10, d: 18, bale: "B901" }),
+        weightKg: 1020,
+      },
+    ],
+  });
+
+  const ws = wb.getWorksheet("Oct 2024");
+  assert.ok(ws);
+  assert.equal(ws.getRow(2).getCell(28).value, "Total Number of Tyres");
+  assert.equal(ws.getRow(2).getCell(29).value, "Bale Weight\nKG");
+  assert.equal(ws.getRow(2).getCell(30).value, "Bale Weight\nTONS");
+  assert.equal(ws.getRow(4).getCell(30).value, 1.02);
+});
+
+run("13) totals row computes tyre/weight sums and average baling time", async () => {
+  const wb = await createBalingWorkbook({
+    standardRecords: [
+      {
+        ...mkRow({ y: 2024, m: 10, d: 18, bale: "B910" }),
+        startTime: { h: 10, m: 0, s: 0 },
+        finishTime: { h: 10, m: 10, s: 0 },
+        passengerQty: 10,
+        weightKg: 1000,
+      },
+      {
+        ...mkRow({ y: 2024, m: 10, d: 18, bale: "B911" }),
+        startTime: { h: 10, m: 20, s: 0 },
+        finishTime: { h: 10, m: 40, s: 0 },
+        passengerQty: 20,
+        weightKg: 2000,
+      },
+    ],
+  });
+
+  const ws = wb.getWorksheet("Oct 2024");
+  assert.ok(ws);
+  const totalsRow = ws.getRow(ws.rowCount);
+  assert.equal(totalsRow.getCell(2).value, "TOTALS");
+  assert.equal(totalsRow.getCell(11).value, "00:15:00");
+  assert.equal(totalsRow.getCell(12).value, 30);
+  assert.equal(totalsRow.getCell(28).value, 30);
+  assert.equal(totalsRow.getCell(29).value, 3000);
+  assert.equal(totalsRow.getCell(30).value, 3);
+  // 15:00 boundary => orange according to current rule.
+  assert.equal(totalsRow.getCell(11).fill.fgColor.argb, "FFFFE699");
 });
