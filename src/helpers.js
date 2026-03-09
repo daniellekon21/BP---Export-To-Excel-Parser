@@ -35,7 +35,7 @@ export function dateSortKey(d) {
 
 // ─── WhatsApp Message Splitter ─────────────────────────────────────────────────
 // Saves the WhatsApp system timestamp date alongside each message.
-// This date is authoritative — operator-typed body dates can contain typos.
+// Baling/Cutting parsers may prefer body date and fall back to timestamp.
 
 export function splitWhatsAppMessages(text) {
   const lines = text.split("\n");

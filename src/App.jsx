@@ -1,7 +1,7 @@
 import { useState, useCallback, useRef, useMemo } from "react";
 import { formatTime, dateToStr, monthLabel, MONTH_NAMES } from "./helpers.js";
 import { parseCuttingMessages, parseCuttingMessagesNew } from "./parsing/cuttingParser.js";
-import { parseBalingMessages } from "./parsing/balingParser.js";
+import { parseBalingMessagesNew, parseBalingMessagesOldWithFallback } from "./parsing/balingParserNew.js";
 import { downloadWorkbook } from "./excel/downloadWorkbook.js";
 
 function getQuarter(month) {
@@ -33,6 +33,38 @@ function parseLogDate(dateStr) {
   const m = String(dateStr).trim().match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/);
   if (!m) return null;
   return { day: parseInt(m[1], 10), month: parseInt(m[2], 10), year: parseInt(m[3], 10) };
+}
+
+function isUsableDate(d) {
+  return d && Number.isInteger(d.year) && Number.isInteger(d.month) && Number.isInteger(d.day);
+}
+
+function monthYearToken(d) {
+  return `${String(d.month).padStart(2, "0")}_${d.year}`;
+}
+
+function buildBalingExportFilename(baling) {
+  const all = [
+    ...(baling?.standardRecords || []),
+    ...(baling?.failedRecords || []),
+    ...(baling?.scrapRecords || []),
+    ...(baling?.crcaRecords || []),
+    ...(baling?.summaryRecords || []),
+  ];
+
+  const dates = all
+    .map((r) => r?.chatDateParsed || r?.date || null)
+    .filter((d) => isUsableDate(d))
+    .sort((a, b) => {
+      const ak = a.year * 10000 + a.month * 100 + a.day;
+      const bk = b.year * 10000 + b.month * 100 + b.day;
+      return ak - bk;
+    });
+
+  if (!dates.length) return "BPR_Production.xlsx";
+  const start = monthYearToken(dates[0]);
+  const end = monthYearToken(dates[dates.length - 1]);
+  return `BPR_Production_${start}_${end}.xlsx`;
 }
 
 function filterValidationLog(logEntries, mode, filterYear, filterPeriod) {
@@ -71,6 +103,7 @@ function emptyBalingData() {
 export default function App() {
   const [chatType, setChatType] = useState(null);
   const [cuttingMode, setCuttingMode] = useState("old");
+  const [balingMode, setBalingMode] = useState("old");
   const [chatText, setChatText] = useState("");
   const [records, setRecords] = useState([]);
   const [summaryRecords, setSummaryRecords] = useState([]);
@@ -176,6 +209,11 @@ export default function App() {
     return `Export scope excludes ${excludedMonthKeys.length} month(s): ${preview}${extra}.`;
   }, [filterMode, excludedMonthKeys]);
 
+  const defaultBalingFilename = useMemo(
+    () => buildBalingExportFilename(filteredBalingData),
+    [filteredBalingData]
+  );
+
   const handleFile = useCallback((file) => {
     setFileName(file.name);
     const reader = new FileReader();
@@ -194,7 +232,9 @@ export default function App() {
     if (!chatText.trim()) return;
 
     if (chatType === "baling") {
-      const parsedBaling = parseBalingMessages(chatText);
+      const parsedBaling = balingMode === "new"
+        ? parseBalingMessagesNew(chatText)
+        : parseBalingMessagesOldWithFallback(chatText);
       setBalingData(parsedBaling);
       setRecords(parsedBaling.allRecords);
       setSummaryRecords(parsedBaling.summaryRecords);
@@ -217,7 +257,7 @@ export default function App() {
   };
 
   const handleDownload = async () => {
-    const defaultFilename = chatType === "baling" ? "BPR_Baling_Data.xlsx" : "BPR_Cutting_Data.xlsx";
+    const defaultFilename = chatType === "baling" ? defaultBalingFilename : "BPR_Cutting_Data.xlsx";
     const cleaned = String(exportFileName || "")
       .trim()
       .replace(/[\\/:*?"<>|]/g, "")
@@ -249,6 +289,7 @@ export default function App() {
   const handleReset = () => {
     setChatType(null);
     setCuttingMode("old");
+    setBalingMode("old");
     setChatText("");
     setRecords([]);
     setSummaryRecords([]);
@@ -282,7 +323,7 @@ export default function App() {
       {!chatType && (
         <div style={{ display: "flex", gap: 16, flexWrap: "wrap", justifyContent: "center" }}>
           {[
-            { id: "baling", icon: "📦", title: "Baling Production", desc: "Bale reports with weights, operators & tyre counts" },
+            { id: "baling", icon: "📦", title: "Production (Baling)", desc: "Bale reports with weights, operators & tyre counts" },
             { id: "cutting", icon: "✂️", title: "Cutting Data", desc: "Hourly cutting machine counts per tyre type" },
           ].map((opt) => (
             <button
@@ -313,7 +354,7 @@ export default function App() {
               ← Back
             </button>
             <span style={{ color: "#D1D5DB" }}>|</span>
-            <span style={{ fontSize: 14, fontWeight: 600 }}>{chatType === "baling" ? "📦 Baling Production" : "✂️ Cutting Data"}</span>
+            <span style={{ fontSize: 14, fontWeight: 600 }}>{chatType === "baling" ? "📦 Production (Baling)" : "✂️ Cutting Data"}</span>
           </div>
 
           {chatType === "cutting" && (
@@ -325,6 +366,21 @@ export default function App() {
               ].map((opt) => (
                 <label key={opt.value} style={{ display: "flex", alignItems: "center", gap: 6, cursor: "pointer" }}>
                   <input type="radio" name="cuttingMode" value={opt.value} checked={cuttingMode === opt.value} onChange={() => setCuttingMode(opt.value)} style={{ accentColor: accent }} />
+                  {opt.label}
+                </label>
+              ))}
+            </div>
+          )}
+
+          {chatType === "baling" && (
+            <div style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: 16, fontSize: 13, color: mutedText }}>
+              <span style={{ fontWeight: 500 }}>Format:</span>
+              {[
+                { value: "old", label: "Old WhatsApp format" },
+                { value: "new", label: "New WhatsApp format" },
+              ].map((opt) => (
+                <label key={opt.value} style={{ display: "flex", alignItems: "center", gap: 6, cursor: "pointer" }}>
+                  <input type="radio" name="balingMode" value={opt.value} checked={balingMode === opt.value} onChange={() => setBalingMode(opt.value)} style={{ accentColor: accent }} />
                   {opt.label}
                 </label>
               ))}
@@ -368,7 +424,7 @@ export default function App() {
           <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 16, flexWrap: "wrap", gap: 12 }}>
             <div>
               <h2 style={{ fontSize: 20, fontWeight: 700, margin: 0 }}>{records.length} records parsed</h2>
-              <p style={{ fontSize: 13, color: mutedText, margin: "4px 0 0" }}>{chatType === "baling" ? "Baling records across all subtypes" : "Cutting data entries"}</p>
+              <p style={{ fontSize: 13, color: mutedText, margin: "4px 0 0" }}>{chatType === "baling" ? "Production (Baling) records across all subtypes" : "Cutting data entries"}</p>
             </div>
             <div style={{ display: "flex", gap: 10 }}>
               <button onClick={handleReset} style={{ padding: "10px 20px", background: "white", border: "1px solid #D1D5DB", borderRadius: 10, fontSize: 14, cursor: "pointer" }}>Start Over</button>
@@ -439,7 +495,7 @@ export default function App() {
               type="text"
               value={exportFileName}
               onChange={(e) => setExportFileName(e.target.value)}
-              placeholder={chatType === "baling" ? "BPR_Baling_Data.xlsx" : "BPR_Cutting_Data.xlsx"}
+              placeholder={chatType === "baling" ? defaultBalingFilename : "BPR_Cutting_Data.xlsx"}
               style={{ marginLeft: chatType === "cutting" ? 0 : "auto", padding: "6px 10px", borderRadius: 8, border: `1px solid ${borderColor}`, fontSize: 12, background: "white", minWidth: 220 }}
               aria-label="Export filename"
             />

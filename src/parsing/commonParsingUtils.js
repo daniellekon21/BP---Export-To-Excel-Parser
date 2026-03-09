@@ -36,7 +36,7 @@ export function normalizeBalingText(text) {
 }
 
 export function parseLabelTime(body, label) {
-  const re = new RegExp(`${label}\\s*(?:time)?\\s*[:\\-]\\s*\\b(\\d{1,2}:\\d{2}(?::\\d{2})?)\\b`, "i");
+  const re = new RegExp(`${label}\\s*(?:time)?\\s*[:\\-=]\\s*\\b(\\d{1,2}:\\d{2}(?::\\d{2})?)\\b`, "i");
   const m = String(body || "").match(re);
   return m ? parseTime(m[1]) : null;
 }

@@ -116,13 +116,42 @@ export const BALING_SUMMARY_HEADERS = [
   "Raw Message",
 ];
 
+// Bale code prefix definitions (for reference):
+//   CA    = Cut Agricultural
+//   PCR   = Passenger Car Radial (legacy code: PB → PCR)
+//   CRC   = Cut Radial (will shorten to CR in future)
+//   CRS   = Cut Radial Scrap
+//   TB    = Tubes (will relabel to "Tubes")
+//   CN    = Cut Nylon
+//   PShrB = Passenger Shred Bulkbag
+//   CR    = Cut Radial (old SR/Scrap Radial merged into CR from Nov 2024)
+//
+// Tyre component abbreviations used in bale messages:
+//   T      = Tread
+//   SW     = Side Wall
+//   HC     = Heavy Commercial (HC(Cut) for CRC bales; HC(PS) for CR/CRS bales)
+//   MC     = Motorcycle
+//   LC     = Light Commercial
+//   P / Pass. = Passenger
+//   4x4    = 4x4
+//   Tube   = Tubes (TB bales)
+//
+// IMPORTANT — alias order matters: the FIRST match wins.
+//   sr must come before hc so HC(PS) maps to sr (pre-shredded/scrap radial),
+//   while HC(Cut) and bare HC map to hc (cut heavy commercial).
+
 export const BALING_CATEGORY_ALIASES = [
-  { key: "passenger", pattern: /\bpassengers?\b|\bpass\b|\bpcr\b/i },
+  { key: "passenger", pattern: /\bpassengers?\b|\bpass\b|\bpcr\b|\bPass\./i },
   { key: "fourx4", pattern: /\b4\s*x\s*4\b|\b4x4\b/i },
   { key: "lc", pattern: /\blight\s*commercials?\b|\blight\s*comm\b|\blc\b/i },
   { key: "motorcycle", pattern: /\bmotor\s*cycle\b|\bmotorcycle\b|\bmc\b/i },
-  { key: "sr", pattern: /\bsr\b|\bside\s*wall\s*radial\b|\bradial\s*side\s*wall\b|\bhc\s*\(\s*ps\s*\)\b/i },
+  // HC(PS) = pre-shredded heavy commercial (same category as old Scrap Radial / SR)
+  { key: "sr", pattern: /\bsr\b|\bside\s*wall\s*radial\b|\bradial\s*side\s*wall\b|\bHC\s*\(\s*ps\s*\)/i },
+  // HC(Cut) and bare HC = cut heavy commercial (CRC bales)
+  { key: "hc", pattern: /\bheavy\s*commercials?\b|\bHC\s*\(\s*cut\s*\)|\bHC\b/i },
   { key: "agri", pattern: /\bagri\b|\bagricultural\b/i },
-  { key: "tread", pattern: /\btyre\s*treads?\b|\btire\s*treads?\b|\btreads?\b|\blct\b|\bhct\b|\bhc\s*\(\s*treads?\s*\)\b/i },
+  // \bT\b matches standalone "T" used for treads in CA/CN bale messages
+  { key: "tread", pattern: /\btyre\s*treads?\b|\btire\s*treads?\b|\btreads?\b|\blct\b|\bhct\b|\bhc\s*\(\s*treads?\s*\)\b|\bT\b/i },
   { key: "sideWall", pattern: /\bside\s*walls?\b|\bsidewall\b|\bsw\b/i },
+  { key: "tube", pattern: /\btubes?\b/i },
 ];

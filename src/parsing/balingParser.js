@@ -61,9 +61,13 @@ function resolveParsedDate(bodyDate, tsDate) {
   return tsDate || null;
 }
 
+function isFutureBodyDate(bodyDate) {
+  return isValidDateObject(bodyDate) && dateObjToSortable(bodyDate) > dateObjToSortable(todayDateObj());
+}
+
 function detectMachine(body) {
   const src = String(body || "");
-  const m = src.match(/\b(?:machine|baler|bm)\s*[-:]?\s*(\d{1,2}|one|two|three|four|five|six|seven|eight|nine|ten)\b/i);
+  const m = src.match(/\b(?:machine|baler|bm)\s*#?\s*[:=\-]?\s*(\d{1,2}|one|two|three|four|five|six|seven|eight|nine|ten)\b/i);
   if (!m) return "";
 
   const raw = m[1].toLowerCase();
@@ -77,10 +81,30 @@ function detectMachine(body) {
   return `BM - ${num}`;
 }
 
+// Bale code prefixes in priority order (longer prefixes before shorter ones
+// to avoid PShrB being swallowed by the P of Passenger, etc.).
+const BALE_CODE_RE = /\b(PShrB|CRC|CRS|PCR|PB|CA|TB|CN|CR)\s*[- ]?\s*(\d{1,4})(?:\s*[-–]\s*\d{1,2}\/\d{2,4})?\b/i;
+
+// Map legacy PB → current PCR label.
+// Exported so balingParserNew.js can reuse the same normalisation logic.
+export function normalizeBalePrefix(raw) {
+  const up = raw.toUpperCase();
+  return up === "PB" ? "PCR" : up;
+}
+
 function detectBaleNumber(body) {
-  const m = String(body || "").match(/\bB\s*[- ]?(\d{1,4})\b/i);
-  if (!m) return "";
-  return `B${m[1]}`;
+  const src = String(body || "");
+  // New-format codes: CA282-02/2026, PB013-02/2025, CRC001-02/2025, etc.
+  const m = src.match(BALE_CODE_RE);
+  if (m) {
+    const prefix = normalizeBalePrefix(m[1]);
+    const seq = m[2].padStart(3, "0");
+    return `${prefix}${seq}`;
+  }
+  // Legacy B-number format: B505, B662
+  const old = src.match(/\bB\s*[- ]?(\d{1,4})\b/i);
+  if (!old) return "";
+  return `B${old[1]}`;
 }
 
 function detectProductionType(body) {
@@ -97,14 +121,14 @@ function cleanPersonField(raw) {
 }
 
 function detectOperator(body) {
-  const m = String(body || "").match(/\boperator\s*[:\-]\s*([^\n]+)/i);
+  const m = String(body || "").match(/\boperator\s*[:=\-]\s*([^\n]+)/i);
   if (!m) return "";
   const onlyOperator = m[1].split(/\bassistant\b/i)[0];
   return cleanPersonField(onlyOperator);
 }
 
 function detectAssistant(body) {
-  const m = String(body || "").match(/\bassistant\s*[:\-]\s*([^\n]+)/i);
+  const m = String(body || "").match(/\b(?:assistant|ass)\s*[:=\-]\s*([^\n]+)/i);
   if (!m) return "";
   const onlyAssistant = m[1].split(/\b(?:start\s*time|finish\s*time|item|total|weight|date|process)\b/i)[0];
   return cleanPersonField(onlyAssistant);
@@ -185,16 +209,23 @@ function detectMessageSubtypeNonFailed(normalized) {
   if (/<media omitted>|this message was deleted|deleted this message/.test(t)) return "ignore";
 
   const hasSummary = /\bdaily\s*summary\b|\bsummary\b/.test(t);
-  const hasCrcaCode = /\b(?:cr|ca)\s*[- ]?\d{1,3}\b/i.test(normalized);
   const hasScrap = /\bscrap\b|radial\s*side\s*walls?|side\s*wall\s*radial/i.test(t);
-  const hasStandardBale = /\bB\s*\d{1,4}\b/i.test(normalized);
   const hasExplicitTest = /\btest\b/i.test(t);
 
+  // New-format production bale codes (CA, PCR, PB→PCR, CRC, CRS, TB, CN, PShrB, CR).
+  const hasNewBaleCode = BALE_CODE_RE.test(normalized);
+  // Legacy B-number format: B505, B662.
+  const hasOldBaleCode = /\bB\s*\d{1,4}\b/i.test(normalized);
+
+  // Old-style CR/CA code that is NOT one of the recognised new production bale codes
+  // (e.g. a bare "CR-01" test reference without a full bale record).
+  const hasLegacyCrcaCode = !hasNewBaleCode && !hasOldBaleCode && /\b(?:cr|ca)\s*[- ]?\d{1,3}\b/i.test(normalized);
+
   if (hasSummary) return "summary";
-  if (hasScrap && !hasStandardBale) return "scrap";
-  if (hasCrcaCode) return "crca";
-  if (hasStandardBale && hasExplicitTest) return "test";
-  if (hasStandardBale) return "standard";
+  if (hasScrap && !hasOldBaleCode && !hasNewBaleCode) return "scrap";
+  if (hasLegacyCrcaCode) return "crca";
+  if ((hasOldBaleCode || hasNewBaleCode) && hasExplicitTest) return "test";
+  if (hasOldBaleCode || hasNewBaleCode) return "standard";
   return "ignore";
 }
 
@@ -210,18 +241,22 @@ function extractItemPairs(normalized) {
     passenger: 0,
     fourx4: 0,
     lc: 0,
+    lcWhole: 0,
+    hc: 0,
+    hcWhole: 0,
     motorcycle: 0,
     sr: 0,
     agri: 0,
     tread: 0,
     sideWall: 0,
+    tube: 0,
     otherRaw: [],
   };
   const warnings = [];
 
   const lines = normalized.split("\n").map((s) => s.trim()).filter(Boolean);
   const itemLikeLines = lines.filter((line) => {
-    const hasItemSignal = /\bitem\b|\bpassengers?\b|\b4x4\b|\blight\s*commercial\b|\blc\b|\bmotorcycle\b|\bagri\b|\bsr\b|\bside\s*wall\b|\bsw\b|\btreads?\b|\blct\b|\bhct\b/i.test(line);
+    const hasItemSignal = /\bitem\b|\bpassengers?\b|\bPass\.|\b4x4\b|\blight\s*commercial\b|\blc\b|\bmotorcycle\b|\bheavy\s*commercial\b|\bHC\b|\bagri\b|\bsr\b|\bside\s*wall\b|\bsw\b|\btreads?\b|\blct\b|\bhct\b|\btubes?\b|\bT\s*[-:]\s*\d/i.test(line);
     const hasStrongItemPrefix = /\bitem\b/i.test(line);
     const isMetaLine = /\bdate\b|\boperator\b|\bassistant\b|\bstart\b|\bfinish\b|\bmachine\b/i.test(line) && !hasStrongItemPrefix;
     return hasItemSignal && !isMetaLine;
@@ -234,11 +269,22 @@ function extractItemPairs(normalized) {
     .replace(/\btotal\s*(?:qty)?\s*[:\-]?\s*\d+\b/gi, "")
     .replace(/\bitem\s*[:\-]/gi, "")
     .replace(/\bqty\b/gi, "")
-    .replace(/\s-\s*(?=(?:passengers?|4x4|light commercial|lc\b|motorcycle|sr\b|agri\b|treads?\b|side wall|sw\b|lct\b|hct\b))/gi, ", ")
+    .replace(/\s-\s*(?=(?:passengers?|4x4|light commercial|lc\b|heavy commercial|HC\b|motorcycle|sr\b|agri\b|treads?\b|side wall|sw\b|lct\b|hct\b|tubes?\b))/gi, ", ")
     .replace(/\n/g, ", ");
 
   const chunks = cleaned.split(",").map((s) => s.trim()).filter(Boolean);
   for (const chunk of chunks) {
+    const hcWholeMatch = chunk.match(/\bhc\s*full\b\s*[:\-]?\s*(\d+)\b/i);
+    if (hcWholeMatch) {
+      items.hcWhole += Number(hcWholeMatch[1]);
+      continue;
+    }
+    const lcWholeMatch = chunk.match(/\blc\s*full\b\s*[:\-]?\s*(\d+)\b/i);
+    if (lcWholeMatch) {
+      items.lcWhole += Number(lcWholeMatch[1]);
+      continue;
+    }
+
     const key = mapAliasToKey(chunk);
     const nums = chunk.match(/\d+/g);
     const qty = nums ? Number(nums[nums.length - 1]) : null;
@@ -293,6 +339,24 @@ function parseCrcaCode(normalized) {
   return `${m[1].toUpperCase()}-${serial}${series}`;
 }
 
+function baleTypeFromCode(code) {
+  const m = String(code || "").match(/^(PSHRB|CONV|CRC|CRS|PCR|PB|CA|TB|CN|SR|CR|B)/i);
+  if (!m) return "";
+  const p = m[1].toUpperCase();
+  if (p === "PB" || p === "B") return "PCR";
+  if (p === "SR") return "CRS";
+  if (p === "CONV") return "ConV";
+  if (p === "PSHRB") return "PShrB";
+  return p;
+}
+
+function parseTbQty(normalized) {
+  const m = String(normalized || "").match(/\btb\s*[:=\-]\s*(\d+)\b/i);
+  if (!m) return null;
+  const n = Number(m[1]);
+  return Number.isFinite(n) ? n : null;
+}
+
 function detectScrapQty(body) {
   const patterns = [
     /\bscrap[^\n]*?[:\-]\s*(\d+)\b/i,
@@ -317,6 +381,7 @@ function parseFailure(normalized) {
 
 function makeBaseRow(msg, normalized) {
   const bodyDate = extractBodyDate(normalized);
+  const usedTimestampFallbackForFutureBodyDate = isFutureBodyDate(bodyDate);
   const parsedDate = resolveParsedDate(bodyDate, msg.tsDate || null);
   const startTime = parseLabelTime(normalized, "start") || parseLabelTime(normalized, "starting");
   const finishTime = parseLabelTime(normalized, "finish") || parseLabelTime(normalized, "end");
@@ -326,6 +391,9 @@ function makeBaseRow(msg, normalized) {
     sourceTimestamp: tsToString(msg.tsDate),
     chatDateParsed: parsedDate,
     date: parsedDate,
+    bodyDate: bodyDate || null,
+    bodyDateText: bodyDate ? dateToStr(bodyDate) : "",
+    usedTimestampFallbackForFutureBodyDate,
     machine: detectMachine(normalized),
     operator: detectOperator(normalized),
     assistant: detectAssistant(normalized),
@@ -372,12 +440,8 @@ function validateRecord(row, subtype, result, msg, seenProductionBales) {
 
   const shouldCheckTotalMismatch = subtype === "Bales_Production" || subtype === "Failed_Bales";
   if (shouldCheckTotalMismatch && row.totalQty !== null && row.totalQty !== undefined && categorySum > 0 && row.totalQty !== categorySum) {
-    logValidation(result, msg, row, {
-      severity: "WARNING",
-      issueType: "TOTAL_QTY_MISMATCH",
-      sheetTargetAttempted: subtype,
-      problemDescription: `Total Qty mismatch: declared ${row.totalQty}, parsed ${categorySum}`,
-    });
+    // Treat operator-entered total as advisory: auto-correct to parsed category sum.
+    row.totalQty = categorySum;
   }
 
   if (subtype === "Bales_Production" && (!row.weightKg || row.weightKg <= 0)) {
@@ -416,6 +480,222 @@ function validateRecord(row, subtype, result, msg, seenProductionBales) {
   return true;
 }
 
+/**
+ * Process a single WhatsApp message using old-format baling logic.
+ * Mutates `result` and `seenProductionBales` in place.
+ * Returns true if the message was recognised and produced at least one record
+ * (including summaries/scraps/failed); returns false if the message was ignored.
+ * Exported so balingParserNew.js can reuse this as a fallback.
+ */
+export function processBalingMessageOldFormat(msg, normalized, result, seenProductionBales) {
+  const failedClass = isFailedBaleMessage(normalized);
+  const subtype = failedClass.isFailed ? "failed" : detectMessageSubtypeNonFailed(normalized);
+
+  if (subtype === "ignore") {
+    result.ignoredMessages += 1;
+    return false;
+  }
+
+  const base = makeBaseRow(msg, normalized);
+
+  if (subtype === "summary") {
+    const metrics = parseSummaryMetrics(normalized);
+    const summary = {
+      ...base,
+      summaryType: detectSummaryType(normalized),
+      machine: base.machine || "",
+      baleCount: metrics.baleCount,
+      tons: metrics.tons,
+      passengerQty: metrics.items.passenger || null,
+      fourx4Qty: metrics.items.fourx4 || null,
+      lcQty: metrics.items.lc || null,
+      motorcycleQty: metrics.items.motorcycle || null,
+      srQty: metrics.items.sr || null,
+      agriQty: metrics.items.agri || null,
+      treadQty: metrics.items.tread || null,
+      sideWallQty: metrics.items.sideWall || null,
+      totalTyres: parseTotalQty(normalized),
+      machine1StartHour: metrics.machine1Start,
+      machine1FinishHour: metrics.machine1Finish,
+      machine2StartHour: metrics.machine2Start,
+      machine2FinishHour: metrics.machine2Finish,
+      notesFlags: metrics.warnings.join(" | "),
+    };
+    result.summaryRecords.push(summary);
+
+    if (metrics.warnings.length > 0) {
+      logValidation(result, msg, summary, {
+        severity: "WARNING",
+        issueType: "SUMMARY_PARSE_PARTIAL",
+        sheetTargetAttempted: "Daily_Summaries",
+        problemDescription: metrics.warnings.join(" | "),
+        action: "Summary row emitted with partial mapping",
+      });
+    }
+    return true;
+  }
+
+  if (subtype === "scrap") {
+    const scrap = {
+      ...base,
+      productionLabel: (() => {
+        const m = normalized.match(/\bproduction\s*[:\-]\s*([^\n]+)/i);
+        return m ? m[1].trim() : "";
+      })(),
+      baleNumber: detectBaleNumber(normalized),
+      scrapType: /radial/i.test(normalized) ? "Scrap Radial Sidewall" : "Scrap",
+      scrapQty: detectScrapQty(normalized),
+      notesFlags: "",
+    };
+
+    const issues = [];
+    if (!scrap.scrapQty) issues.push("Missing scrap quantity");
+    if (!scrap.weightKg) issues.push("Missing weight for scrap record");
+    scrap.notesFlags = issues.join(" | ");
+    result.scrapRecords.push(scrap);
+
+    for (const issue of issues) {
+      logValidation(result, msg, scrap, {
+        severity: "WARNING",
+        issueType: issue.includes("quantity") ? "SCRAP_QTY_MISSING" : "MISSING_WEIGHT",
+        sheetTargetAttempted: "Scrap_Sidewalls",
+        problemDescription: issue,
+      });
+    }
+    return true;
+  }
+
+  const { items, warnings } = extractItemPairs(normalized);
+  const rowBase = {
+    ...base,
+    baleNumber: detectBaleNumber(normalized),
+    productionType: detectProductionType(normalized),
+    passengerQty: items.passenger || null,
+    fourx4Qty: items.fourx4 || null,
+    lcQty: items.lc || null,
+      hcQty: items.hc || null,
+      hcWholeQty: items.hcWhole || null,
+      lcWholeQty: items.lcWhole || null,
+      motorcycleQty: items.motorcycle || null,
+    srQty: items.sr || null,
+    agriQty: items.agri || null,
+    treadQty: items.tread || null,
+    sideWallQty: items.sideWall || null,
+    tubeQty: items.tube || null,
+    otherItemRaw: items.otherRaw.join(" | "),
+    recordType: subtype.toUpperCase(),
+    notesFlags: warnings.join(" | "),
+  };
+
+  const baleType = baleTypeFromCode(rowBase.baleNumber);
+  if (baleType === "TB") {
+    const tbQty = parseTbQty(normalized);
+    rowBase.tubeQty = tbQty;
+    // TB rows should not populate non-TB tyre categories from free-form T/SW/LC text.
+    rowBase.passengerQty = null;
+    rowBase.fourx4Qty = null;
+    rowBase.lcQty = null;
+    rowBase.hcQty = null;
+    rowBase.hcWholeQty = null;
+    rowBase.lcWholeQty = null;
+    rowBase.motorcycleQty = null;
+    rowBase.srQty = null;
+    rowBase.agriQty = null;
+    rowBase.treadQty = null;
+    rowBase.sideWallQty = null;
+    if (tbQty !== null && (rowBase.totalQty === null || rowBase.totalQty === undefined)) {
+      rowBase.totalQty = tbQty;
+    }
+    if (tbQty === null) {
+      logValidation(result, msg, rowBase, {
+        severity: "WARNING",
+        issueType: "MALFORMED_TB",
+        sheetTargetAttempted: subtype === "failed" ? "Failed_Bales" : "Bales_Production",
+        problemDescription: "TB bale missing TB quantity (expected TB: N / TB- N / TB= N)",
+      });
+    }
+  }
+
+  for (const warn of warnings) {
+    logValidation(result, msg, rowBase, {
+      severity: "WARNING",
+      issueType: "UNKNOWN_CATEGORY",
+      sheetTargetAttempted: subtype === "failed" ? "Failed_Bales" : "Bales_Production",
+      problemDescription: warn,
+    });
+  }
+
+  if (subtype === "failed") {
+    const failure = parseFailure(normalized);
+    const failed = {
+      ...rowBase,
+      failureType: failure.failureType,
+      failureReason: failure.failureReason || failedClass.reason || "",
+    };
+    result.failedRecords.push(failed);
+    logValidation(result, msg, failed, {
+      severity: "INFO",
+      issueType: "FAILED_BALE_REROUTED",
+      sheetTargetAttempted: "Failed_Bales",
+      problemDescription: "Failed bale detected and routed to Failed_Bales",
+    });
+    if (failedClass.uncertain) {
+      logValidation(result, msg, failed, {
+        severity: "WARNING",
+        issueType: "FAILED_BALE_UNCERTAIN",
+        sheetTargetAttempted: "Failed_Bales",
+        problemDescription: "Failed-bale detection uncertain (admin/conflicting/low-structure text)",
+      });
+    }
+    if (failedClass.conflictingSignals) {
+      logValidation(result, msg, failed, {
+        severity: "WARNING",
+        issueType: "FAILED_BALE_CONFLICTING_SIGNALS",
+        sheetTargetAttempted: "Failed_Bales",
+        problemDescription: "Message contains both failure and production signals",
+      });
+    }
+    validateRecord(failed, "Failed_Bales", result, msg, seenProductionBales);
+    return true;
+  }
+
+  if (subtype === "crca" || subtype === "test") {
+    const crca = {
+      ...rowBase,
+      baleTestCode: parseCrcaCode(normalized) || rowBase.baleNumber,
+      testType: rowBase.productionType || "Test",
+      recordType: subtype === "test" ? "TEST" : "CR_CA",
+    };
+    result.crcaRecords.push(crca);
+
+    if (!crca.baleTestCode) {
+      logValidation(result, msg, crca, {
+        severity: "WARNING",
+        issueType: "MALFORMED_CRCA",
+        sheetTargetAttempted: "CR_CA_Tests",
+        problemDescription: "Malformed CR/CA/Test code",
+      });
+    }
+
+    if (subtype === "test") {
+      logValidation(result, msg, crca, {
+        severity: "INFO",
+        issueType: "ROW_EMITTED_FALLBACK",
+        sheetTargetAttempted: "CR_CA_Tests",
+        problemDescription: "Explicit test bale rerouted from standard production",
+      });
+    }
+
+    validateRecord(crca, "CR_CA_Tests", result, msg, seenProductionBales);
+    return true;
+  }
+
+  const production = { ...rowBase, recordType: "STANDARD", productionType: rowBase.productionType || "Production" };
+  const keep = validateRecord(production, "Bales_Production", result, msg, seenProductionBales);
+  if (keep) result.standardRecords.push(production);
+  return true;
+}
+
 export function parseBalingMessages(text) {
   const messages = splitWhatsAppMessages(text);
   const result = {
@@ -433,178 +713,7 @@ export function parseBalingMessages(text) {
 
   for (const msg of messages) {
     const normalized = normalizeBalingText(msg.body);
-    const failedClass = isFailedBaleMessage(normalized);
-    const subtype = failedClass.isFailed ? "failed" : detectMessageSubtypeNonFailed(normalized);
-
-    if (subtype === "ignore") {
-      result.ignoredMessages += 1;
-      continue;
-    }
-
-    const base = makeBaseRow(msg, normalized);
-
-    if (subtype === "summary") {
-      const metrics = parseSummaryMetrics(normalized);
-      const summary = {
-        ...base,
-        summaryType: detectSummaryType(normalized),
-        machine: base.machine || "",
-        baleCount: metrics.baleCount,
-        tons: metrics.tons,
-        passengerQty: metrics.items.passenger || null,
-        fourx4Qty: metrics.items.fourx4 || null,
-        lcQty: metrics.items.lc || null,
-        motorcycleQty: metrics.items.motorcycle || null,
-        srQty: metrics.items.sr || null,
-        agriQty: metrics.items.agri || null,
-        treadQty: metrics.items.tread || null,
-        sideWallQty: metrics.items.sideWall || null,
-        totalTyres: parseTotalQty(normalized),
-        machine1StartHour: metrics.machine1Start,
-        machine1FinishHour: metrics.machine1Finish,
-        machine2StartHour: metrics.machine2Start,
-        machine2FinishHour: metrics.machine2Finish,
-        notesFlags: metrics.warnings.join(" | "),
-      };
-      result.summaryRecords.push(summary);
-
-      if (metrics.warnings.length > 0) {
-        logValidation(result, msg, summary, {
-          severity: "WARNING",
-          issueType: "SUMMARY_PARSE_PARTIAL",
-          sheetTargetAttempted: "Daily_Summaries",
-          problemDescription: metrics.warnings.join(" | "),
-          action: "Summary row emitted with partial mapping",
-        });
-      }
-      continue;
-    }
-
-    if (subtype === "scrap") {
-      const scrap = {
-        ...base,
-        productionLabel: (() => {
-          const m = normalized.match(/\bproduction\s*[:\-]\s*([^\n]+)/i);
-          return m ? m[1].trim() : "";
-        })(),
-        baleNumber: detectBaleNumber(normalized),
-        scrapType: /radial/i.test(normalized) ? "Scrap Radial Sidewall" : "Scrap",
-        scrapQty: detectScrapQty(normalized),
-        notesFlags: "",
-      };
-
-      const issues = [];
-      if (!scrap.scrapQty) issues.push("Missing scrap quantity");
-      if (!scrap.weightKg) issues.push("Missing weight for scrap record");
-      scrap.notesFlags = issues.join(" | ");
-      result.scrapRecords.push(scrap);
-
-      for (const issue of issues) {
-        logValidation(result, msg, scrap, {
-          severity: "WARNING",
-          issueType: issue.includes("quantity") ? "SCRAP_QTY_MISSING" : "MISSING_WEIGHT",
-          sheetTargetAttempted: "Scrap_Sidewalls",
-          problemDescription: issue,
-        });
-      }
-      continue;
-    }
-
-    const { items, warnings } = extractItemPairs(normalized);
-    const rowBase = {
-      ...base,
-      baleNumber: detectBaleNumber(normalized),
-      productionType: detectProductionType(normalized),
-      passengerQty: items.passenger || null,
-      fourx4Qty: items.fourx4 || null,
-      lcQty: items.lc || null,
-      motorcycleQty: items.motorcycle || null,
-      srQty: items.sr || null,
-      agriQty: items.agri || null,
-      treadQty: items.tread || null,
-      sideWallQty: items.sideWall || null,
-      otherItemRaw: items.otherRaw.join(" | "),
-      recordType: subtype.toUpperCase(),
-      notesFlags: warnings.join(" | "),
-    };
-
-    for (const warn of warnings) {
-      logValidation(result, msg, rowBase, {
-        severity: "WARNING",
-        issueType: "UNKNOWN_CATEGORY",
-        sheetTargetAttempted: subtype === "failed" ? "Failed_Bales" : "Bales_Production",
-        problemDescription: warn,
-      });
-    }
-
-    if (subtype === "failed") {
-      const failure = parseFailure(normalized);
-      const failed = {
-        ...rowBase,
-        failureType: failure.failureType,
-        failureReason: failure.failureReason || failedClass.reason || "",
-      };
-      result.failedRecords.push(failed);
-      logValidation(result, msg, failed, {
-        severity: "INFO",
-        issueType: "FAILED_BALE_REROUTED",
-        sheetTargetAttempted: "Failed_Bales",
-        problemDescription: "Failed bale detected and routed to Failed_Bales",
-      });
-      if (failedClass.uncertain) {
-        logValidation(result, msg, failed, {
-          severity: "WARNING",
-          issueType: "FAILED_BALE_UNCERTAIN",
-          sheetTargetAttempted: "Failed_Bales",
-          problemDescription: "Failed-bale detection uncertain (admin/conflicting/low-structure text)",
-        });
-      }
-      if (failedClass.conflictingSignals) {
-        logValidation(result, msg, failed, {
-          severity: "WARNING",
-          issueType: "FAILED_BALE_CONFLICTING_SIGNALS",
-          sheetTargetAttempted: "Failed_Bales",
-          problemDescription: "Message contains both failure and production signals",
-        });
-      }
-      validateRecord(failed, "Failed_Bales", result, msg, seenProductionBales);
-      continue;
-    }
-
-    if (subtype === "crca" || subtype === "test") {
-      const crca = {
-        ...rowBase,
-        baleTestCode: parseCrcaCode(normalized) || rowBase.baleNumber,
-        testType: rowBase.productionType || "Test",
-        recordType: subtype === "test" ? "TEST" : "CR_CA",
-      };
-      result.crcaRecords.push(crca);
-
-      if (!crca.baleTestCode) {
-        logValidation(result, msg, crca, {
-          severity: "WARNING",
-          issueType: "MALFORMED_CRCA",
-          sheetTargetAttempted: "CR_CA_Tests",
-          problemDescription: "Malformed CR/CA/Test code",
-        });
-      }
-
-      if (subtype === "test") {
-        logValidation(result, msg, crca, {
-          severity: "INFO",
-          issueType: "ROW_EMITTED_FALLBACK",
-          sheetTargetAttempted: "CR_CA_Tests",
-          problemDescription: "Explicit test bale rerouted from standard production",
-        });
-      }
-
-      validateRecord(crca, "CR_CA_Tests", result, msg, seenProductionBales);
-      continue;
-    }
-
-    const production = { ...rowBase, recordType: "STANDARD", productionType: rowBase.productionType || "Production" };
-    const keep = validateRecord(production, "Bales_Production", result, msg, seenProductionBales);
-    if (keep) result.standardRecords.push(production);
+    processBalingMessageOldFormat(msg, normalized, result, seenProductionBales);
   }
 
   result.allRecords = [

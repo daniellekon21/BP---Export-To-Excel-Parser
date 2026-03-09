@@ -1,0 +1,59 @@
+Baling New-Format QA Report
+Generated on: 2026-03-09T12:48:18.518Z
+
+Artifacts
+- Chat input: /Users/daniellekonfino/Desktop/BP/whatsapp_to_excel_proj/bpr-whatsapp-parser/sample-data/generated_baling_newformat_qa_chat.txt
+- Parsed JSON: /Users/daniellekonfino/Desktop/BP/whatsapp_to_excel_proj/bpr-whatsapp-parser/qa_outputs/baling_newformat_qa_parsed.json
+- Excel output: /Users/daniellekonfino/Desktop/BP/whatsapp_to_excel_proj/bpr-whatsapp-parser/qa_outputs/BPR_Baling_Data_QA_NewFormat.xlsx
+
+Coverage Overview
+- Total WhatsApp messages generated: 25
+- Standard records: 18
+- Failed records: 1
+- Scrap records: 0
+- CR/CA test records: 0
+- Summary records: 2
+- Ignored messages: 3
+- Validation entries: 11
+
+Issue Types
+- DUPLICATE_BALE_NUMBER: 1
+- FAILED_BALE_REROUTED: 1
+- PARSER_FALLBACK_USED: 6
+- TIME_SEQUENCE_INVALID: 1
+- UNKNOWN_MATERIAL_CATEGORY: 2
+
+Sample Problem Rows (first 20 validation entries)
+- [INFO] PARSER_FALLBACK_USED: New-format parse produced no result; old format fallback used
+  Date= Bale= Machine=
+  Raw=09/01/2026 bm#=2 PCR004-01/2026 Operator: Donna ASS: Andile Start: 09:05 Finish: 09:28 Passenger: 93 4x4: 7 Weight: 902 KG
+- [INFO] PARSER_FALLBACK_USED: New-format parse produced no result; old format fallback used
+  Date= Bale= Machine=
+  Raw=11/01/2026 BM#=1 TB003-01/2026 Operator: Menzi Ass: Langa Start: 14:35 Finish: 14:52 TB=9 Weight: 698 kg
+- [WARNING] UNKNOWN_MATERIAL_CATEGORY: Unrecognised material category lines: Process: 28 minutes
+  Date=12/01/2026 Bale=CONV001 Machine=BM - 2
+  Raw=12/01/2026 BM #: 2 ConV001-01/2026 Operator: Donna Ass: Andile Start: 11:10 Finish: 11:38 Process: 28 minutes Weight: 810 kg
+- [INFO] PARSER_FALLBACK_USED: New-format parse produced no result; old format fallback used
+  Date= Bale= Machine=
+  Raw=Daily summary Date - 12/01/2026 Bales - 12 Weight - 9500 kg Tons - 9.5 Passenger - 500 4x4 - 60 LC - 210
+- [INFO] PARSER_FALLBACK_USED: New-format parse produced no result; old format fallback used
+  Date= Bale= Machine=
+  Raw=Machine 1 Date - 12/01/2026 B123 - Production Operator - Donna Assistant - Menzi Start time - 14:08 Finish time -14:22 Item - Passenger Qty - 71 Total Qty - 71 Weight - 1024kg
+- [WARNING] TIME_SEQUENCE_INVALID: Finish before start (11:30 -> 11:12)
+  Date=13/01/2026 Bale=CRS003 Machine=BM - 2
+  Raw=13/01/2026 BM #: 2 CRS003-01/2026 Operator: Bekinkosi Ass: Bhekisisa Start: 11:30 Finish: 11:12 HC Full: 9 HC T: 18 HC SW: 20 Weight: 890 kg
+- [WARNING] UNKNOWN_MATERIAL_CATEGORY: Unrecognised material category lines: MysteryCompound: 19
+  Date=13/01/2026 Bale=PCR007 Machine=BM - 2
+  Raw=13/01/2026 BM #: 2 PCR007-01/2026 Operator: Donna Ass: Andile Start: 10:12 Finish: 10:32 Passenger: 50 MysteryCompound: 19 Weight: 730 kg
+- [WARNING] DUPLICATE_BALE_NUMBER: Duplicate bale number on same date (PCR007); latest kept
+  Date=13/01/2026 Bale=PCR007 Machine=BM - 2
+  Raw=13/01/2026 BM #: 2 PCR007-01/2026 Operator: Donna Ass: Andile Start: 10:35 Finish: 10:54 Passenger: 52 Weight: 744 kg
+- [INFO] FAILED_BALE_REROUTED: Failed bale detected and routed to Failed_Bales
+  Date=13/01/2026 Bale= Machine=BM - 2
+  Raw=Machine Two Date - 13/01/2026 Failed Bale - wire snapped Operator - Donna Assistant - Menzi Start time - 09:00 Finish time - 09:20
+- [INFO] PARSER_FALLBACK_USED: New-format parse produced no result; old format fallback used
+  Date= Bale= Machine=
+  Raw=Machine Two Date - 13/01/2026 Failed Bale - wire snapped Operator - Donna Assistant - Menzi Start time - 09:00 Finish time - 09:20
+- [INFO] PARSER_FALLBACK_USED: New-format parse produced no result; old format fallback used
+  Date= Bale= Machine=
+  Raw=Daily summary Date - 03/02/2026 Bales - 8 Weight - 6400 kg Tons - 6.4 Passenger - 330 LC - 120

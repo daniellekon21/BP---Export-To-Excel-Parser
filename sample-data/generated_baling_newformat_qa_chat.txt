@@ -1,0 +1,213 @@
+2026/01/09, 08:20 - QA Bot: 09/01/2026
+BM #: 1
+
+PCR003-01/2026
+Operator: Bekinkosi
+Ass: Bhekisisa
+Start: 18:45
+Finish: 18:59
+Total Time: 14 minutes
+PCR
+Lc: 80
+Weight: 650 kg
+2026/01/09, 09:15 - QA Bot: 09/01/2026
+bm#=2
+
+PCR004-01/2026
+Operator: Donna
+ASS: Andile
+Start: 09:05
+Finish: 09:28
+Passenger: 93
+4x4: 7
+Weight: 902 KG
+2026/01/10, 10:02 - QA Bot: 10/01/2026
+BM#:1
+
+CN003-01/2026
+Operator: Donna
+Ass: Andile
+Start: 19:31
+Finish: 19:49
+LC: 38
+SW: 19
+Weight: 620 kg
+2026/01/10, 11:40 - QA Bot: 10/01/2026
+bm - 1
+
+CRC001-01/2026
+Operator: Menzi
+Ass: Langa
+Start: 10:45
+Finish: 11:04
+LC Full: 12
+LC Cut
+T: 24
+SW: 28
+Weight: 955 kg
+2026/01/10, 12:20 - QA Bot: 10/01/2026
+BM: 2
+
+CRS001-01/2026
+Operator: Bekinkosi
+Ass: Bhekisisa
+Start: 10:45
+Finish: 11:04
+HC Full: 15
+HC Cut
+T: 28
+SW: 41
+Weight: 955 kg
+2026/01/10, 13:02 - QA Bot: 10/01/2026
+BM #: 2
+
+CRS002-01/2026
+Operator: Bekinkosi
+Ass: Bhekisisa
+Start: 13:10
+Finish: 13:33
+LC Full: 10
+LC Cut
+LC T: 20
+LC SW: 30
+HC Full: 5
+HC Cut
+HC T: 12
+HC SW: 8
+Weight: 980 kg
+2026/01/11, 08:55 - QA Bot: 11/01/2026
+BM #: 1
+
+CA012-01/2026
+Operator: Menzi
+Ass: Langa
+Start: 08:20
+Finish: 08:46
+T: 44
+SW: 26
+Weight: 910 kg
+2026/01/11, 10:14 - QA Bot: 11/01/2026
+BM #: 1
+
+TB001-01/2026
+Operator: Menzi
+Ass: Langa
+Start: 13:31
+Finish: 13:57
+TB: 14
+Weight: 734 kg
+2026/01/11, 10:18 - QA Bot: 11/01/2026
+BM #:1
+
+tb002-01/2026
+Operator: Menzi
+Ass: Langa
+Start: 14:05
+Finish: 14:26
+tb-11
+Weight: 711 kg
+2026/01/11, 10:25 - QA Bot: 11/01/2026
+BM#=1
+
+TB003-01/2026
+Operator: Menzi
+Ass: Langa
+Start: 14:35
+Finish: 14:52
+TB=9
+Weight: 698 kg
+2026/01/12, 09:00 - QA Bot: 12/01/2026
+BM #: 2
+
+ConV001-01/2026
+Operator: Donna
+Ass: Andile
+Start: 11:10
+Finish: 11:38
+Process: 28 minutes
+Weight: 810 kg
+2026/01/12, 10:05 - QA Bot: 12/01/2026
+BM #: 1
+
+PShrB001-01/2026
+Operator: Bekinkosi
+Ass: Bhekisisa
+Start: 12:05
+Finish: 12:22
+Weight: 1020 kg
+2026/01/12, 15:10 - QA Bot: Daily summary Date - 12/01/2026 Bales - 12 Weight - 9500 kg Tons - 9.5 Passenger - 500 4x4 - 60 LC - 210
+2026/01/12, 15:20 - QA Bot: Machine 1 Date - 12/01/2026 B123 - Production Operator - Donna Assistant - Menzi Start time - 14:08 Finish time -14:22 Item - Passenger Qty - 71 Total Qty - 71 Weight - 1024kg
+2026/01/13, 09:03 - QA Bot: 09/01/2034
+BM #: 1
+
+PCR999-01/2026
+Operator: Donna
+Ass: Andile
+Start: 09:00
+Finish: 09:20
+Passenger: 100
+Weight: 905 kg
+2026/01/13, 09:20 - QA Bot: 13/01/2026
+BM #: 2
+
+CRS003-01/2026
+Operator: Bekinkosi
+Ass: Bhekisisa
+Start: 11:30
+Finish: 11:12
+HC Full: 9
+HC T: 18
+HC SW: 20
+Weight: 890 kg
+2026/01/13, 09:24 - QA Bot: 13/01/2026
+BM #: 2
+
+PCR007-01/2026
+Operator: Donna
+Ass: Andile
+Start: 10:12
+Finish: 10:32
+Passenger: 50
+MysteryCompound: 19
+Weight: 730 kg
+2026/01/13, 09:30 - QA Bot: 13/01/2026
+BM #: 2
+
+PCR007-01/2026
+Operator: Donna
+Ass: Andile
+Start: 10:35
+Finish: 10:54
+Passenger: 52
+Weight: 744 kg
+2026/01/13, 09:40 - QA Bot: Machine Two Date - 13/01/2026 Failed Bale - wire snapped Operator - Donna Assistant - Menzi Start time - 09:00 Finish time - 09:20
+2026/02/03, 08:10 - QA Bot: 03/02/2026
+BM #: 1
+
+CN018-02/2026
+Operator: Donna
+Ass: Andile
+Start: 08:01
+Finish: 08:19
+LC: 42
+SW: 16
+Weight: 640 kg
+2026/02/03, 09:10 - QA Bot: 03/02/2026
+BM #: 2
+
+CRC010-02/2026
+Operator: Menzi
+Ass: Langa
+Start: 09:05
+Finish: 09:33
+LC Full: 6
+LC T: 14
+LC SW: 18
+HC Full: 4
+HC T: 11
+HC SW: 12
+Weight: 900 kg
+2026/02/03, 09:45 - QA Bot: Daily summary Date - 03/02/2026 Bales - 8 Weight - 6400 kg Tons - 6.4 Passenger - 330 LC - 120
+2026/02/03, 10:00 - QA Bot: Noted, thanks team
+2026/02/03, 10:03 - QA Bot: This message was deleted
+2026/02/03, 10:06 - QA Bot: <Media omitted>
