@@ -63,7 +63,7 @@ function styleCuttingHeaderRows(ws, styles) {
 
   for (const rowIndex of [1, 2]) {
     const row = ws.getRow(rowIndex);
-    for (let c = 1; c <= 16; c += 1) {
+    for (let c = 1; c <= 17; c += 1) {
       const cell = row.getCell(c);
       cell.font = { ...(cell.font || {}), bold: true, color: { argb: styles.textDark } };
       cell.fill = { type: "pattern", pattern: "solid", fgColor: { argb: colorForColumn(c) } };
@@ -83,6 +83,7 @@ function styleCuttingHeaderRows(ws, styles) {
     { start: 11, end: 12 },
     { start: 13, end: 15 },
     { start: 16, end: 16 },
+    { start: 17, end: 17 },
   ];
   const topRow = ws.getRow(1);
   const bottomRow = ws.getRow(2);
@@ -102,7 +103,7 @@ function styleCuttingHeaderRows(ws, styles) {
 
 function styleTotalsRow(row, styles) {
   const cuttingHeaderGray = "FFC2C8D6";
-  for (let c = 1; c <= 16; c += 1) {
+  for (let c = 1; c <= 17; c += 1) {
     const cell = row.getCell(c);
     cell.font = { ...(cell.font || {}), bold: true, color: { argb: styles.textDark } };
     cell.fill = { type: "pattern", pattern: "solid", fgColor: { argb: cuttingHeaderGray } };
@@ -110,13 +111,13 @@ function styleTotalsRow(row, styles) {
     cell.alignment = { vertical: "middle", horizontal: "center", wrapText: true };
   }
 
-  for (let c = 1; c <= 16; c += 1) {
+  for (let c = 1; c <= 17; c += 1) {
     const cell = row.getCell(c);
     const border = { ...(cell.border || {}) };
     border.top = styles.mediumBlack;
     border.bottom = styles.mediumBlack;
     if (c === 1) border.left = styles.mediumBlack;
-    if (c === 16) border.right = styles.mediumBlack;
+    if (c === 17) border.right = styles.mediumBlack;
     cell.border = border;
   }
 }
@@ -218,7 +219,7 @@ export async function downloadCuttingWorkbook(records, filename, extras = {}) {
     let hasCuttingTotalsRow = false;
 
     if (rows.length >= 2) {
-      rows.push(["TOTALS", "", "", "", "", "", "", "", "", "", "", "", "", "", "", ""]);
+      rows.push(["TOTALS", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", ""]);
       hasCuttingTotalsRow = true;
     }
 
@@ -255,9 +256,9 @@ export async function downloadCuttingWorkbook(records, filename, extras = {}) {
     ws.views = [{ state: "frozen", ySplit: 2 }];
     ws.autoFilter = {
       from: { row: 2, column: 1 },
-      to: { row: 2, column: 16 },
+      to: { row: 2, column: 17 },
     };
-    applyColumnWidths(ws, [13, 16, 14, 26, 10, 10, 10, 10, 10, 14, 15, 15, 14, 14, 18, 12]);
+    applyColumnWidths(ws, [13, 16, 14, 26, 10, 10, 10, 10, 10, 14, 15, 15, 14, 14, 18, 12, 65]);
 
     if (totalsRowIndex) {
       for (let col = 7; col <= 16; col += 1) {

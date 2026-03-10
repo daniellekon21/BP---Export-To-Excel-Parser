@@ -287,7 +287,7 @@ run("12) production headers renamed and Bale Weight TONS is calculated from KG",
   assert.equal(ws.getRow(4).getCell(31).value, 1.02);
 });
 
-run("12b) body date text is exported in the last production column", async () => {
+run("12b) body date text column is removed from production output", async () => {
   const wb = await createBalingWorkbook({
     standardRecords: [
       {
@@ -299,11 +299,11 @@ run("12b) body date text is exported in the last production column", async () =>
 
   const ws = wb.getWorksheet("Oct 2024");
   assert.ok(ws);
-  assert.equal(ws.getRow(2).getCell(33).value, "Body Date Text");
-  assert.equal(ws.getRow(4).getCell(33).value, "17/10/2024");
+  assert.equal(ws.getRow(2).getCell(32).value, "Raw Text");
+  assert.equal(ws.getRow(2).getCell(33).value, null);
 });
 
-run("12c) daily summaries are appended to month sheet and no separate summary sheet exists", async () => {
+run("12c) each month has a dedicated DS sheet and no summary table is appended inside production sheet", async () => {
   const wb = await createBalingWorkbook({
     standardRecords: [
       { ...mkRow({ y: 2024, m: 10, d: 18, bale: "B903" }) },
@@ -329,8 +329,14 @@ run("12c) daily summaries are appended to month sheet and no separate summary sh
       break;
     }
   }
-  assert.ok(foundSummaryTable);
-  assert.equal(wb.getWorksheet("Daily_Summaries"), undefined);
+  assert.equal(foundSummaryTable, false);
+  const dsWs = wb.getWorksheet("Oct DS 2024");
+  assert.ok(dsWs);
+  assert.equal(dsWs.getRow(2).getCell(2).value, "Daily Summary Oct 2024");
+  assert.equal(dsWs.getRow(4).getCell(2).value, "Date");
+  assert.equal(dsWs.getRow(4).getCell(3).value, "PCR");
+  assert.equal(dsWs.getRow(6).getCell(3).value, "Pass Qty");
+  assert.equal(dsWs.getRow(7).getCell(2).value, "18/10/2024");
 });
 
 run("12d) future body-date fallback highlights Date cell in pastel yellow", async () => {
@@ -591,7 +597,7 @@ run("23) ConV makes the whole production row red font", async () => {
   });
   const ws = wb.getWorksheet("Jan 2026");
   assert.ok(ws);
-  for (let c = 1; c <= 33; c += 1) {
+  for (let c = 1; c <= 32; c += 1) {
     assert.equal(ws.getRow(4).getCell(c).font.color.argb, "FFFF0000");
   }
 });

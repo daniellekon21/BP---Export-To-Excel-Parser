@@ -1,9 +1,6 @@
 import { dateSortKey, dateToStr, monthLabel } from "../helpers.js";
 import {
   BALING_SHEET_NAMES,
-  BALING_FAILED_HEADERS,
-  BALING_SCRAP_HEADERS,
-  BALING_CRCA_HEADERS,
 } from "../config/balingSchemas.js";
 import { baseStyles, styleHeaderRow, styleBodyRows, applyColumnWidths } from "./excelCommon.js";
 
@@ -40,11 +37,10 @@ const EXAMPLE_PROD_HEADER_ROW2 = [
   "Bale Weight\nKG",
   "Bale Weight\nTONS",
   "Raw Text",
-  "Body Date Text",
 ];
 
 const EXAMPLE_PROD_HEADER_ROW3 = (() => {
-  const row = new Array(33).fill("");
+  const row = new Array(32).fill("");
   row[11] = "PCR";     // L3
   row[15] = "RADIALS"; // P3
   row[25] = "NYLONS";  // Z3
@@ -215,13 +211,13 @@ function styleProductionHeader(ws, styles) {
   const thin = styles.thinBlack;
   const medium = styles.mediumBlack;
   const groupStarts = new Set([2, 12, 16, 26, 29]); // B, L, P, Z, AC
-  const groupEnds = new Set([11, 15, 25, 28, 33]); // K, O, Y, AB, AG
+  const groupEnds = new Set([11, 15, 25, 28, 32]); // K, O, Y, AB, AF
 
   const fills = [
     { from: 2, to: 15, fgColor: { theme: 4, tint: 0.7999511703848384 } }, // B:O light blue
     { from: 16, to: 25, fgColor: { argb: "FFE97132" } }, // P:Y RADIALS
     { from: 26, to: 28, fgColor: { argb: "FF0D8ABA" } }, // Z:AB NYLONS
-    { from: 29, to: 33, fgColor: { theme: 4, tint: 0.7999511703848384 } }, // AC:AG same as PCR
+    { from: 29, to: 32, fgColor: { theme: 4, tint: 0.7999511703848384 } }, // AC:AF same as PCR
   ];
 
   const fillForCol = (col) => fills.find((f) => col >= f.from && col <= f.to)?.fgColor || { theme: 4, tint: 0.7999511703848384 };
@@ -230,7 +226,7 @@ function styleProductionHeader(ws, styles) {
   ws.getRow(3).height = 17;
 
   for (let row = 2; row <= 3; row += 1) {
-    for (let col = 2; col <= 33; col += 1) {
+    for (let col = 2; col <= 32; col += 1) {
       const cell = ws.getRow(row).getCell(col);
       const isRadials = col >= 16 && col <= 25;
       const isNylons = col >= 26 && col <= 28;
@@ -258,6 +254,17 @@ function applyNumericFormatting(ws, numericColumns) {
   for (const col of numericColumns) {
     ws.getColumn(col).numFmt = "0";
   }
+}
+
+function parseDdMmYyyyToKey(value) {
+  const m = String(value || "").trim().match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/);
+  if (!m) return null;
+  const d = Number(m[1]);
+  const mm = Number(m[2]);
+  const y = Number(m[3]);
+  if (!Number.isInteger(d) || !Number.isInteger(mm) || !Number.isInteger(y)) return null;
+  if (mm < 1 || mm > 12 || d < 1 || d > 31) return null;
+  return y * 10000 + mm * 100 + d;
 }
 
 function componentQtySum(r) {
@@ -585,7 +592,8 @@ function groupRowsByMonth(records) {
   return { byMonth, invalid };
 }
 
-function appendProductionRow(ws, r) {
+function appendProductionRow(ws, r, options = {}) {
+  const { suppressDate = false } = options;
   const effectiveRecordType =
     r.recordType ||
     (r.failureType ? "FAILED" : (r.baleTestCode ? "CR_CA" : (r.scrapType ? "SCRAP" : "STANDARD")));
@@ -600,7 +608,7 @@ function appendProductionRow(ws, r) {
 
   const added = ws.addRow([
     "",
-    dateToStr(r.chatDateParsed),
+    suppressDate ? "" : dateToStr(r.chatDateParsed),
     r.machine || "",
     baleType,
     displayBaleNumberOnly(baleCode),
@@ -631,10 +639,13 @@ function appendProductionRow(ws, r) {
     num(r.weightKg),
     num(resolvedWeightTons(r)),
     r.rawMessage || "",
-    r.bodyDateText || "",
   ]);
+  if (!suppressDate) {
+    const dateCell = added.getCell(2);
+    dateCell.font = { ...(dateCell.font || {}), bold: true };
+  }
   if (baleType === "ConV") {
-    for (let col = 1; col <= 33; col += 1) {
+    for (let col = 1; col <= 32; col += 1) {
       const c = added.getCell(col);
       c.font = { ...(c.font || {}), color: { argb: "FFFF0000" } };
     }
@@ -730,62 +741,322 @@ function appendProductionTotalsRow(ws, rows) {
   ]);
 }
 
-function appendMonthlySummariesTable(ws, summaries) {
-  if (!Array.isArray(summaries) || summaries.length === 0) return;
+function dsSheetNameFromMonthKey(key) {
+  const m = String(key || "").match(/^(\d{4})-(\d{2})$/);
+  if (!m) return `${monthLabel(key)} DS`;
+  const year = m[1];
+  const monthShort = monthLabel(key).split(" ")[0];
+  return `${monthShort} DS ${year}`;
+}
 
-  ws.addRow([]);
-  ws.addRow(["", "Daily Summaries"]);
-  ws.addRow([
-    "",
-    "Chat Date Parsed",
-    "Summary Type",
-    "Baling Machine Number",
-    "Bale Count",
-    "Weight Kg",
-    "Tons",
-    "Passenger Qty",
-    "4x4 Qty",
-    "LC Qty",
-    "Motorcycle Qty",
-    "SR Qty",
-    "Tread Qty",
-    "Side Wall Qty",
-    "Agri Qty",
-    "Total Tyres",
-    "Machine 1 Start Hour",
-    "Machine 1 Finish Hour",
-    "Machine 2 Start Hour",
-    "Machine 2 Finish Hour",
-    "Notes / Flags",
-    "Raw Message",
-  ]);
+const DS_COLUMN_WIDTHS = [
+  // A..AO
+  10.83203125, 13, 14.83203125,
+  ...new Array(37).fill(13),
+  80, // AO Raw Text
+];
 
-  for (const r of sortByDateAndTime(summaries)) {
-    ws.addRow([
-      "",
-      dateToStr(r.chatDateParsed),
-      r.summaryType || "BALING_DAILY_SUMMARY",
-      r.machine || "",
-      num(r.baleCount),
-      num(r.weightKg),
-      num(r.tons),
-      num(r.passengerQty),
-      num(r.fourx4Qty),
-      num(r.lcQty),
-      num(r.motorcycleQty),
-      num(r.srQty),
-      num(r.treadQty),
-      num(r.sideWallQty),
-      num(r.agriQty),
-      num(r.totalTyres),
-      r.machine1StartHour || "",
-      r.machine1FinishHour || "",
-      r.machine2StartHour || "",
-      r.machine2FinishHour || "",
-      r.notesFlags || "",
-      r.rawMessage || "",
-    ]);
+const DS_MERGES = [
+  "B2:D2",
+  "B4:B6",
+  "C4:I4",
+  "J4:N4",
+  "O4:U4",
+  "V4:Z4",
+  "AA4:AE4",
+  "AF4:AH4",
+  "AI4:AK4",
+  "AL4:AN4",
+  "C5:C6",
+  "D5:D6",
+  "E5:E6",
+  "F5:F6",
+  "G5:G6",
+  "H5:H6",
+  "I5:I6",
+  "J5:M5",
+  "N5:N6",
+  "O5:P5",
+  "Q5:R5",
+  "S5:T5",
+  "U5:U6",
+  "V5:Y5",
+  "Z5:Z6",
+  "AA5:AD5",
+  "AE5:AE6",
+  "AF5:AG5",
+  "AH5:AH6",
+  "AI5:AJ5",
+  "AK5:AK6",
+  "AL5:AM5",
+  "AN5:AN6",
+];
+
+function kgToTons(kg) {
+  const n = finiteOrNull(kg);
+  if (!Number.isFinite(n)) return null;
+  return Math.round((n / 1000) * 1000) / 1000;
+}
+
+function tonsFromSummary(summary) {
+  const t = finiteOrNull(summary?.tons);
+  if (Number.isFinite(t)) return t;
+  return kgToTons(summary?.weightKg);
+}
+
+function setDsCell(row, col, value) {
+  if (value === null || value === undefined || value === "") return;
+  row.getCell(col).value = value;
+}
+
+function addDailySummaryHeader(ws, styles, titleMonthLabel = "") {
+  const thickBlack = { style: "thick", color: { argb: "FF000000" } };
+  ws.getRow(2).height = 21;
+  ws.getRow(3).height = 17;
+  ws.getRow(6).height = 17;
+
+  ws.getCell("B2").value = `Daily Summary ${titleMonthLabel}`.trim();
+  ws.getCell("B2").font = { name: "Calibri", size: 16, bold: true };
+  ws.getCell("B2").alignment = { horizontal: "center", vertical: "middle", wrapText: false };
+  ws.getCell("B2").border = {};
+  ws.getCell("C2").border = {};
+  ws.getCell("D2").border = {};
+
+  ws.getCell("B4").value = "Date";
+  ws.getCell("C4").value = "PCR";
+  ws.getCell("J4").value = "CA";
+  ws.getCell("O4").value = "CRC";
+  ws.getCell("V4").value = "CRS";
+  ws.getCell("AA4").value = "CN";
+  ws.getCell("AF4").value = "TB";
+  ws.getCell("AI4").value = "PShrB";
+  ws.getCell("AL4").value = "ConV";
+
+  ws.getCell("C5").value = "Pass Qty";
+  ws.getCell("D5").value = "4 x 4 Qty";
+  ws.getCell("E5").value = "MC Qty";
+  ws.getCell("F5").value = "LC Qty";
+  ws.getCell("G5").value = "Total No. Bales";
+  ws.getCell("H5").value = "Combined KG";
+  ws.getCell("I5").value = "Combined TONS";
+  ws.getCell("J5").value = "Agricultural";
+  ws.getCell("N5").value = "Total No. Bales";
+  ws.getCell("O5").value = "Light Commercial";
+  ws.getCell("Q5").value = "Heavy Commercial";
+  ws.getCell("S5").value = "COMBINED";
+  ws.getCell("U5").value = "Total No. Bales";
+  ws.getCell("V5").value = "Heavy Commercial";
+  ws.getCell("Z5").value = "Total No. Bales";
+  ws.getCell("AA5").value = "Nylon";
+  ws.getCell("AE5").value = "Total No. Bales";
+  ws.getCell("AF5").value = "Tubes";
+  ws.getCell("AH5").value = "Total No. Bales";
+  ws.getCell("AI5").value = "Passenger Shred Bulkbag";
+  ws.getCell("AK5").value = "Total No. Bales";
+  ws.getCell("AL5").value = "Conveyor Belt";
+  ws.getCell("AN5").value = "Total No. Bales";
+
+  ws.getCell("J6").value = "Agri T";
+  ws.getCell("K6").value = "Agri SW";
+  ws.getCell("L6").value = "Agri KG";
+  ws.getCell("M6").value = "Agri TONS";
+  ws.getCell("O6").value = "LC T";
+  ws.getCell("P6").value = "LC SW";
+  ws.getCell("Q6").value = "HC T";
+  ws.getCell("R6").value = "HC SW";
+  ws.getCell("S6").value = "Combined KG";
+  ws.getCell("T6").value = "Combined TONS";
+  ws.getCell("V6").value = "HC (Whole)";
+  ws.getCell("W6").value = "HC SW";
+  ws.getCell("X6").value = "HC KG";
+  ws.getCell("Y6").value = "HC TONS";
+  ws.getCell("AA6").value = "Nylon T";
+  ws.getCell("AB6").value = "Nylon SW";
+  ws.getCell("AC6").value = "Nylon KG";
+  ws.getCell("AD6").value = "Nylon TONS";
+  ws.getCell("AF6").value = "TB KG";
+  ws.getCell("AG6").value = "TB TONS";
+  ws.getCell("AI6").value = "Weight KG";
+  ws.getCell("AJ6").value = "Weight TONS";
+  ws.getCell("AL6").value = "Weight KG";
+  ws.getCell("AM6").value = "Weight TONS";
+
+  for (const merge of DS_MERGES) ws.mergeCells(merge);
+
+  const greyFill = { type: "pattern", pattern: "solid", fgColor: { argb: "FFD9D9D9" } };
+  for (const c of ["B4", "C4", "J4", "O4", "V4", "AA4", "AF4", "AI4", "AL4"]) {
+    ws.getCell(c).fill = greyFill;
   }
+
+  for (let col = 2; col <= 40; col += 1) {
+    for (let row = 4; row <= 6; row += 1) {
+      const cell = ws.getRow(row).getCell(col);
+      cell.font = {
+        name: "Calibri",
+        size: row === 4 ? 11 : 12,
+        bold: row !== 6,
+      };
+      cell.alignment = { horizontal: "center", vertical: "middle", wrapText: false };
+      if (row === 5 && [7, 14, 21, 26, 31, 34, 37, 40].includes(col)) {
+        cell.alignment = { horizontal: "center", vertical: "middle", wrapText: true };
+      }
+
+      cell.border = {
+        top: row === 4 ? thickBlack : styles.thinBlack,
+        bottom: row === 6 ? thickBlack : styles.thinBlack,
+        left: col === 2 ? thickBlack : styles.thinBlack,
+        right: col === 40 ? thickBlack : styles.thinBlack,
+      };
+    }
+  }
+}
+
+function applyDsTableOuterThickBorder(ws) {
+  const thickBlack = { style: "thick", color: { argb: "FF000000" } };
+  const fromRow = 4;
+  const toRow = Math.max(6, ws.rowCount);
+  const fromCol = 2;  // B
+  const toCol = 40;   // AN
+
+  for (let row = fromRow; row <= toRow; row += 1) {
+    for (let col = fromCol; col <= toCol; col += 1) {
+      const cell = ws.getRow(row).getCell(col);
+      const next = { ...(cell.border || {}) };
+      if (row === fromRow) next.top = thickBlack;
+      if (row === toRow) next.bottom = thickBlack;
+      if (col === fromCol) next.left = thickBlack;
+      if (col === toCol) next.right = thickBlack;
+      cell.border = next;
+    }
+  }
+}
+
+function mapSummaryToDsRow(r) {
+  const row = new Array(41).fill("");
+  row[1] = dateToStr(r.chatDateParsed);
+  const type = String(r.summaryType || "").toUpperCase();
+  const kg = finiteOrNull(r.weightKg);
+  const tons = tonsFromSummary(r);
+  const baleCount = finiteOrNull(r.baleCount);
+  const cat = r?.summaryCategories || {};
+  const pcr = cat.PCR || null;
+  const ca = cat.CA || null;
+  const crc = cat.CRC || null;
+  const crs = cat.CRS || null;
+  const cn = cat.CN || null;
+  const tb = cat.TB || null;
+  const pshrb = cat.PSHRB || null;
+  const conv = cat.CONV || null;
+
+  // PCR
+  row[2] = num(finiteOrNull(pcr?.passengerQty) ?? r.passengerQty);
+  row[3] = num(finiteOrNull(pcr?.fourx4Qty) ?? r.fourx4Qty);
+  row[4] = num(finiteOrNull(pcr?.motorcycleQty) ?? r.motorcycleQty);
+  row[5] = num(finiteOrNull(pcr?.lcQty) ?? r.lcQty);
+  if (pcr || type.includes("PCR")) {
+    const pcrKg = finiteOrNull(pcr?.weightKg) ?? kg;
+    const pcrT = finiteOrNull(pcr?.tons) ?? (Number.isFinite(pcrKg) ? kgToTons(pcrKg) : tons);
+    row[6] = num(pcr?.baleCount ?? baleCount);
+    row[7] = num(pcrKg);
+    row[8] = num(pcrT);
+  }
+
+  // CA
+  const agriT = finiteOrNull(ca?.agriT) ?? finiteOrNull(r.agriQty) ?? finiteOrNull(r.treadQty);
+  const agriSW = finiteOrNull(ca?.agriSW) ?? finiteOrNull(r.sideWallQty);
+  row[9] = num(agriT);
+  row[10] = num(agriSW);
+  if (ca || type.includes("CA")) {
+    const caKg = finiteOrNull(ca?.weightKg) ?? kg;
+    const caT = finiteOrNull(ca?.tons) ?? (Number.isFinite(caKg) ? kgToTons(caKg) : tons);
+    row[11] = num(caKg);
+    row[12] = num(caT);
+    row[13] = num(ca?.baleCount ?? baleCount);
+  }
+
+  // CRC
+  if (crc || type.includes("CRC")) {
+    const crcKg = finiteOrNull(crc?.weightKg) ?? kg;
+    const crcT = finiteOrNull(crc?.tons) ?? (Number.isFinite(crcKg) ? kgToTons(crcKg) : tons);
+    row[14] = num(finiteOrNull(crc?.lcT) ?? finiteOrNull(crc?.lcQty) ?? finiteOrNull(r.lcQty) ?? finiteOrNull(r.treadQty));
+    row[15] = num(finiteOrNull(crc?.lcSW) ?? finiteOrNull(r.sideWallQty));
+    row[16] = num(finiteOrNull(crc?.hcT));
+    row[17] = num(finiteOrNull(crc?.hcSW));
+    row[18] = num(crcKg);
+    row[19] = num(crcT);
+    row[20] = num(crc?.baleCount ?? baleCount);
+  }
+
+  // CRS
+  if (crs || type.includes("CRS") || type.includes("SCRAP")) {
+    const crsKg = finiteOrNull(crs?.weightKg) ?? kg;
+    const crsT = finiteOrNull(crs?.tons) ?? (Number.isFinite(crsKg) ? kgToTons(crsKg) : tons);
+    row[21] = num(finiteOrNull(crs?.hcWhole) ?? r.srQty);
+    row[22] = num(finiteOrNull(crs?.hcSW) ?? finiteOrNull(r.sideWallQty));
+    row[23] = num(crsKg);
+    row[24] = num(crsT);
+    row[25] = num(crs?.baleCount ?? baleCount);
+  }
+
+  // CN
+  if (cn || type.includes("CN")) {
+    const cnKg = finiteOrNull(cn?.weightKg) ?? kg;
+    const cnT = finiteOrNull(cn?.tons) ?? (Number.isFinite(cnKg) ? kgToTons(cnKg) : tons);
+    row[26] = num(finiteOrNull(cn?.nylonT) ?? finiteOrNull(r.treadQty) ?? finiteOrNull(r.lcQty));
+    row[27] = num(finiteOrNull(cn?.nylonSW) ?? finiteOrNull(r.sideWallQty));
+    row[28] = num(cnKg);
+    row[29] = num(cnT);
+    row[30] = num(cn?.baleCount ?? baleCount);
+  }
+
+  // TB
+  if (tb || type.includes("TB")) {
+    const tbKg = finiteOrNull(tb?.weightKg) ?? kg;
+    const tbT = finiteOrNull(tb?.tons) ?? (Number.isFinite(tbKg) ? kgToTons(tbKg) : tons);
+    row[31] = num(tbKg);
+    row[32] = num(tbT);
+    row[33] = num(tb?.baleCount ?? baleCount);
+  }
+
+  // PShrB / ConV
+  if (pshrb || type.includes("PSHRB")) {
+    const pKg = finiteOrNull(pshrb?.weightKg) ?? kg;
+    const pT = finiteOrNull(pshrb?.tons) ?? (Number.isFinite(pKg) ? kgToTons(pKg) : tons);
+    row[34] = num(pKg);
+    row[35] = num(pT);
+    row[36] = num(pshrb?.baleCount ?? baleCount);
+  }
+  if (conv || type.includes("CONV")) {
+    const cKg = finiteOrNull(conv?.weightKg) ?? kg;
+    const cT = finiteOrNull(conv?.tons) ?? (Number.isFinite(cKg) ? kgToTons(cKg) : tons);
+    row[37] = num(cKg);
+    row[38] = num(cT);
+    row[39] = num(conv?.baleCount ?? baleCount);
+  }
+
+  // Debug column (AO): raw source summary text
+  row[40] = r.rawMessage || "";
+
+  return row;
+}
+
+function addMonthlySummarySheet(ws, summaries, styles, monthLabelText = "") {
+  applyColumnWidths(ws, DS_COLUMN_WIDTHS);
+  addDailySummaryHeader(ws, styles, monthLabelText);
+  ws.getCell("AO6").value = "Raw Text";
+  ws.getCell("AO6").font = { name: "Calibri", size: 12, bold: false };
+  ws.getCell("AO6").alignment = { horizontal: "center", vertical: "middle", wrapText: false };
+  ws.getCell("AO6").border = styles.baseBorder;
+  for (const r of sortByDateAndTime(summaries || [])) {
+    const added = ws.addRow(mapSummaryToDsRow(r));
+    for (let col = 2; col <= 41; col += 1) {
+      const cell = added.getCell(col);
+      cell.alignment = { horizontal: "center", vertical: "middle", wrapText: false };
+      cell.border = styles.baseBorder;
+      cell.font = { name: "Calibri", size: 11, bold: false };
+    }
+  }
+  applyDsTableOuterThickBorder(ws);
 }
 
 export async function createBalingWorkbook(data = {}) {
@@ -803,6 +1074,7 @@ export async function createBalingWorkbook(data = {}) {
   const styles = baseStyles();
 
   const monthSheets = [];
+  const dsSheets = [];
   const logEntries = [...validationLog];
   const allProductionRows = [
     ...standardRecords,
@@ -818,10 +1090,20 @@ export async function createBalingWorkbook(data = {}) {
     const ws = wb.addWorksheet(monthLabel(key));
     addProductionGroupedHeader(ws);
     const monthRows = sortByDateAndTime(byMonth.get(key));
-    for (const r of monthRows) appendProductionRow(ws, r);
+    let previousDateKey = "";
+    for (const r of monthRows) {
+      const d = r.chatDateParsed || r.date || null;
+      const dateKey = isUsableDate(d) ? `${d.year}-${String(d.month).padStart(2, "0")}-${String(d.day).padStart(2, "0")}` : "";
+      const suppressDate = !!dateKey && dateKey === previousDateKey;
+      appendProductionRow(ws, r, { suppressDate });
+      if (dateKey) previousDateKey = dateKey;
+    }
     appendProductionTotalsRow(ws, monthRows);
-    appendMonthlySummariesTable(ws, summariesByMonth.get(key) || []);
     monthSheets.push(ws);
+
+    const dsWs = wb.addWorksheet(dsSheetNameFromMonthKey(key));
+    addMonthlySummarySheet(dsWs, summariesByMonth.get(key) || [], styles, monthLabel(key));
+    dsSheets.push(dsWs);
   }
 
   let reviewWs = null;
@@ -862,7 +1144,6 @@ export async function createBalingWorkbook(data = {}) {
         num(r.weightKg),
         num(resolvedWeightTons(r)),
         r.rawMessage || "",
-        r.bodyDateText || "",
         "Missing or invalid parsed date - month routing skipped",
       ]);
 
@@ -896,82 +1177,6 @@ export async function createBalingWorkbook(data = {}) {
     });
   }
 
-  const failedWs = wb.addWorksheet(BALING_SHEET_NAMES.failed);
-  failedWs.addRow(BALING_FAILED_HEADERS);
-  for (const r of sortByDateAndTime(failedRecords)) {
-    failedWs.addRow([
-      dateToStr(r.chatDateParsed),
-      r.machine || "",
-      displayBaleNumberOnly(r.baleNumber || ""),
-      r.failureType || "FAILED_BALE",
-      r.failureReason || "",
-      r.operator || "",
-      r.assistant || "",
-      formatTimeWithSeconds(r.startTime),
-      formatTimeWithSeconds(r.finishTime),
-      num(r.passengerQty),
-      num(r.fourx4Qty),
-      num(r.lcQty),
-      num(r.motorcycleQty),
-      num(r.srQty),
-      num(r.agriQty),
-      num(r.treadQty),
-      num(r.sideWallQty),
-      num(resolvedTotalQty(r)),
-      num(r.weightKg),
-      r.notesFlags || "",
-      r.rawMessage || "",
-    ]);
-  }
-
-  const scrapWs = wb.addWorksheet(BALING_SHEET_NAMES.scrap);
-  scrapWs.addRow(BALING_SCRAP_HEADERS);
-  for (const r of sortByDateAndTime(scrapRecords)) {
-    scrapWs.addRow([
-      dateToStr(r.chatDateParsed),
-      r.machine || "",
-      r.productionLabel || "",
-      displayBaleNumberOnly(r.baleNumber || ""),
-      r.scrapType || "Scrap",
-      num(r.scrapQty),
-      num(r.weightKg),
-      r.operator || "",
-      r.assistant || "",
-      formatTimeWithSeconds(r.startTime),
-      formatTimeWithSeconds(r.finishTime),
-      r.notesFlags || "",
-      r.rawMessage || "",
-    ]);
-  }
-
-  const crcaWs = wb.addWorksheet(BALING_SHEET_NAMES.crca);
-  crcaWs.addRow(BALING_CRCA_HEADERS);
-  for (const r of sortByDateAndTime(crcaRecords)) {
-    crcaWs.addRow([
-      dateToStr(r.chatDateParsed),
-      r.machine || "",
-      r.baleTestCode || r.baleNumber || "",
-      r.testType || "Test",
-      r.recordType || "CR_CA",
-      r.operator || "",
-      r.assistant || "",
-      formatTimeWithSeconds(r.startTime),
-      formatTimeWithSeconds(r.finishTime),
-      formatDurationForRow(r),
-      num(r.treadQty),
-      num(r.sideWallQty),
-      num(r.passengerQty),
-      num(r.fourx4Qty),
-      num(r.lcQty),
-      num(r.motorcycleQty),
-      num(r.srQty),
-      num(r.agriQty),
-      num(r.weightKg),
-      r.notesFlags || "",
-      r.rawMessage || "",
-    ]);
-  }
-
   const logWs = wb.addWorksheet(BALING_SHEET_NAMES.validation);
   logWs.addRow([
     "Severity",
@@ -984,7 +1189,18 @@ export async function createBalingWorkbook(data = {}) {
     "Raw Message",
   ]);
 
-  for (const e of logEntries) {
+  const sortedLogEntries = [...logEntries].sort((a, b) => {
+    const aDate = a.chatDateParsed || a.date || "";
+    const bDate = b.chatDateParsed || b.date || "";
+    const aKey = parseDdMmYyyyToKey(aDate);
+    const bKey = parseDdMmYyyyToKey(bDate);
+    if (aKey === null && bKey === null) return 0;
+    if (aKey === null) return 1;
+    if (bKey === null) return -1;
+    return aKey - bKey;
+  });
+
+  for (const e of sortedLogEntries) {
     logWs.addRow([
       e.severity || "WARNING",
       e.issueType || "PARSER_WARNING",
@@ -997,19 +1213,29 @@ export async function createBalingWorkbook(data = {}) {
     ]);
   }
 
-  const sheets = [...monthSheets, failedWs, scrapWs, crcaWs, logWs];
+  const sheets = [...monthSheets, ...dsSheets, logWs];
   if (reviewWs) sheets.push(reviewWs);
   for (const ws of sheets) {
     if (monthSheets.includes(ws)) {
       styleProductionHeader(ws, styles);
       styleBodyRows(ws, 4, ws.rowCount, styles.baseBorder);
       ws.views = [{ state: "frozen", xSplit: 1, ySplit: 3, topLeftCell: "B4" }];
-      ws.autoFilter = { from: { row: 2, column: 2 }, to: { row: 2, column: 33 } };
+      ws.autoFilter = { from: { row: 2, column: 2 }, to: { row: 2, column: 32 } };
+    } else if (dsSheets.includes(ws)) {
+      ws.views = [{ state: "frozen", xSplit: 2, ySplit: 6, topLeftCell: "C7" }];
+      ws.autoFilter = null;
     } else {
       styleHeaderRow(ws.getRow(1), styles, false);
       styleBodyRows(ws, 2, ws.rowCount, styles.baseBorder);
       ws.views = [{ state: "frozen", ySplit: 1 }];
       ws.autoFilter = { from: { row: 1, column: 1 }, to: { row: 1, column: ws.columnCount } };
+    }
+  }
+  for (const ws of dsSheets) {
+    applyNumericFormatting(ws, [3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40]);
+    // Preserve decimal tons exactly as parsed from text (do not force integer display).
+    for (const c of [9, 13, 20, 25, 30, 33, 36, 39]) {
+      ws.getColumn(c).numFmt = "0.############";
     }
   }
 
@@ -1047,28 +1273,20 @@ export async function createBalingWorkbook(data = {}) {
       14,
       13,
       65,
-      16,
     ]);
     applyNumericFormatting(ws, [12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31]);
     ws.getColumn(31).numFmt = "0.000";
   }
-  applyColumnWidths(failedWs, [14, 14, 10, 14, 22, 18, 18, 10, 10, 10, 10, 10, 10, 12, 10, 10, 12, 10, 10, 28, 80]);
-  applyColumnWidths(scrapWs, [14, 14, 24, 10, 20, 10, 10, 18, 18, 10, 10, 28, 80]);
-  applyColumnWidths(crcaWs, [14, 14, 18, 10, 10, 18, 18, 10, 10, 10, 10, 12, 10, 10, 10, 12, 10, 10, 10, 28, 80]);
   applyColumnWidths(logWs, [10, 22, 14, 14, 18, 20, 44, 90]);
-  if (reviewWs) applyColumnWidths(reviewWs, [13, 10.6640625, 13, 10.1640625, 12.5, 13, 14.5, 16.1640625, 11.5, 12.5, 16.83203125, 10.83203125, 13, 11.5, 17.33203125, 17.5, 19.1640625, 16, 18.6640625, 16, 21, 17.5, 18.6640625, 14.1640625, 15.1640625, 18.6640625, 20.33203125, 20.83203125, 14, 14, 13, 65, 16, 42]);
+  if (reviewWs) applyColumnWidths(reviewWs, [13, 10.6640625, 13, 10.1640625, 12.5, 13, 14.5, 16.1640625, 11.5, 12.5, 16.83203125, 10.83203125, 13, 11.5, 17.33203125, 17.5, 19.1640625, 16, 18.6640625, 16, 21, 17.5, 18.6640625, 14.1640625, 15.1640625, 18.6640625, 20.33203125, 20.83203125, 14, 14, 13, 65, 42]);
 
   // Numeric formatting for qty/weight/duration columns.
-  applyNumericFormatting(failedWs, [10, 11, 12, 13, 14, 15, 16, 17, 18, 19]);
-  applyNumericFormatting(scrapWs, [6, 7]);
-  applyNumericFormatting(crcaWs, [11, 12, 13, 14, 15, 16, 17, 18, 19]);
   if (reviewWs) {
     applyNumericFormatting(reviewWs, [12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31]);
     reviewWs.getColumn(31).numFmt = "0.000";
   }
 
   for (const ws of monthSheets) applyDurationTrafficLight(ws, 11, 4);
-  applyDurationTrafficLight(crcaWs, 10);
   if (reviewWs) applyDurationTrafficLight(reviewWs, 11);
 
   return wb;

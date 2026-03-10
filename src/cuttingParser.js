@@ -100,8 +100,11 @@ export function mapTyreType(raw) {
   if (t.includes("agri"))                         return "agricultural_t";
   if (t.includes("passenger") || t === "pcr")     return "passenger";
   if (/4.?x.?4/i.test(t))                         return "fourx4";
-  // Check LC before generic "radial" so "radial lc" / "lc radial" → light_commercial
+  // Longest match first: Radial + LC qualifier → RADIALS Light Commercial T (col 10)
+  if (t.includes("radial") && (t.includes("lc") || t.includes("light"))) return "tread_lc";
+  // LC alone (no radial) → PCR Light Commercial (col 9)
   if (t.includes("light") || t.includes("lc"))    return "light_commercial";
+  // Radial alone → RADIALS Heavy Commercial T (col 11)
   if (t.includes("heavy") || t.includes("hc") || t.includes("truck") || t.includes("radial")) return "heavy_commercial_t";
   if (t.includes("motor"))                        return "motorcycle";
   if (t.includes("tread"))                        return "treads";
@@ -203,9 +206,10 @@ export function parseMachineLine(line) {
       return [{ cmNum: parseInt(m[1], 10), column: mapTyreType(m[2]), count }];
   }
 
-  // Format C: CM1 - Count TypeName (handles optional parens + double-dash)
+  // Format C: CM1 - Count TypeName (handles optional parens + double-dash, optional LC qualifier)
   // "CM2-25 Agriculture", "CM2- 21 (Agri)", "CM1-9 - Agri", "Machine 1-45 Trucks"
-  m = line.match(/CM\s*(\d)\s*-\s*(\d+)\s*[-\s]+\(?([A-Za-z]+)\)?/i);
+  // "CM1- 21 Radial(LC)", "CM2-20 Radial (LC)", "CM1-21 Radials LC", "CM1-21 Radial-LC"
+  m = line.match(/CM\s*(\d)\s*-\s*(\d+)\s*[-\s]+\(?([A-Za-z][A-Za-z\s()]*?)\s*$/i);
   if (m) {
     const count = parseInt(m[2], 10);
     if (!isNaN(count))
@@ -213,7 +217,8 @@ export function parseMachineLine(line) {
   }
 
   // Format B: CM1 = Count TypeName  (space guaranteed after normalizeCuttingLine)
-  m = line.match(/CM\s*(\d)\s*=\s*(\d+)\s+([A-Za-z]+)/i);
+  // Also handles LC qualifier: "CM1= 21 Radial(LC)", "CM1=21 Radials LC"
+  m = line.match(/CM\s*(\d)\s*=\s*(\d+)\s+([A-Za-z][A-Za-z\s()]*?)\s*$/i);
   if (m) {
     const count = parseInt(m[2], 10);
     if (!isNaN(count))
@@ -221,7 +226,8 @@ export function parseMachineLine(line) {
   }
 
   // Format F: CM1 Count TypeName  (no separator, e.g. "CM2 45 LC")
-  m = line.match(/^CM\s*(\d)\s+(\d+)\s+([A-Za-z]+)/i);
+  // Also handles LC qualifier: "CM1 21 Radial(LC)", "CM1 21 Radials LC"
+  m = line.match(/^CM\s*(\d)\s+(\d+)\s+([A-Za-z][A-Za-z\s()]*?)\s*$/i);
   if (m) {
     const count = parseInt(m[2], 10);
     if (!isNaN(count))
@@ -435,9 +441,9 @@ function parseSummaryBlocks(body) {
  * All quantity fields start as null (rendered as empty in the sheet).
  * Fields mirror the Excel column layout in cuttingSheetBuilder.js.
  */
-export function makeMachineRow(date, cmNumber, series, startTime, finishTime, operator = "") {
+export function makeMachineRow(date, cmNumber, series, startTime, finishTime, operator = "", rawMessage = "") {
   return {
-    date, cmNumber, series, startTime, finishTime, operator,
+    date, cmNumber, series, startTime, finishTime, operator, rawMessage,
     // PCR tyre quantities
     passenger: null, fourx4: null, motorcycle: null,
     // Tyre quantities (by type)
@@ -794,7 +800,7 @@ export function parseCuttingMessagesNew(text) {
       }
 
       // Build one combined row for this machine/timeframe
-      const row = makeMachineRow(date, `CM - ${cmNum}`, series, startTime, finishTime, opStr);
+      const row = makeMachineRow(date, `CM - ${cmNum}`, series, startTime, finishTime, opStr, body);
       const tyreCol = mapTyreTypeNew(tyreType);
       if (tyreCol !== "unknown_type") row[tyreCol] = tyreCount;
 
@@ -871,7 +877,7 @@ export function parseCuttingMessagesNew(text) {
     if (producedCutters.size > 0) {
       for (const n of [1, 2, 3]) {
         if (!producedCutters.has(n)) {
-          const placeholder = makeMachineRow(date, `CM - ${n}`, series, startTime, finishTime);
+          const placeholder = makeMachineRow(date, `CM - ${n}`, series, startTime, finishTime, "", body);
           placeholder._syntheticPlaceholder = true;
           records.push(placeholder);
         }
@@ -1012,7 +1018,7 @@ export function parseCuttingMessages(text) {
       // Helper: get or create the combined row for a CM number
       const getRow = (cmNum) => {
         if (!machineRows.has(cmNum)) {
-          machineRows.set(cmNum, makeMachineRow(date, `CM - ${cmNum}`, series, startTime, finishTime));
+          machineRows.set(cmNum, makeMachineRow(date, `CM - ${cmNum}`, series, startTime, finishTime, "", body));
         }
         return machineRows.get(cmNum);
       };
@@ -1027,7 +1033,7 @@ export function parseCuttingMessages(text) {
         const hc = parseInt(m[2], 10), lc = parseInt(m[3], 10);
         const row = getRow(cmNum);
         if (!isNaN(hc) && hc > 0) row.heavy_commercial_t = hc;
-        if (!isNaN(lc) && lc > 0) row.light_commercial = lc;
+        if (!isNaN(lc) && lc > 0) row.tread_lc = lc;  // (LC) in this context = RADIALS Light Commercial T
         if ((!isNaN(hc) && hc > 0) || (!isNaN(lc) && lc > 0)) hasIntervalProduction = true;
         // Both zero/NaN: row still exists (getRow already registered it)
       }
@@ -1041,6 +1047,18 @@ export function parseCuttingMessages(text) {
         const count = parseInt(m[2], 10);
         const row = getRow(cmNum);
         if (!isNaN(count)) row.heavy_commercial_t = count;
+        if (!isNaN(count) && count > 0) hasIntervalProduction = true;
+      }
+
+      // Single-(LC) lines: (LC) in parentheses always means RADIALS Light Commercial T
+      const fmtLC = /CM\s*(\d)\s*-\s*\(LC\)\s*=?\s*(\d+)/gi;
+      while ((m = fmtLC.exec(intervalBody)) !== null) {
+        const cmNum = parseInt(m[1], 10);
+        if (seenCMs.has(cmNum)) continue;
+        seenCMs.add(cmNum);
+        const count = parseInt(m[2], 10);
+        const row = getRow(cmNum);
+        if (!isNaN(count)) row.tread_lc = count;
         if (!isNaN(count) && count > 0) hasIntervalProduction = true;
       }
 
@@ -1116,7 +1134,7 @@ export function parseCuttingMessages(text) {
       // keep CM-1/2/3 placeholders for missing machines.
       for (const n of [1, 2, 3]) {
         if (!machineRows.has(n)) {
-          const placeholder = makeMachineRow(date, `CM - ${n}`, series, startTime, finishTime);
+          const placeholder = makeMachineRow(date, `CM - ${n}`, series, startTime, finishTime, "", body);
           placeholder._syntheticPlaceholder = true;
           records.push(placeholder);
         }

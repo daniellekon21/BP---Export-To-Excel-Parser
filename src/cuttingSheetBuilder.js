@@ -17,6 +17,7 @@
 //  13  Heavy Commercial T      NYLONS    (internal: nylons_heavy_commercial_t)
 //  14  Total Number of Nylon T NYLONS    (= col12 + col13)
 //  15  Tread Cuts              extra (not in manual workbook group structure)
+//  16  Raw Text                extra (for QA/debug)
 //
 // Category → business column mapping:
 //   passenger         → col 6  (PCR Passenger)
@@ -38,7 +39,7 @@ export const CUTTING_GROUP_HEADER_ROW = [
   "PCR", "", "", "",               // cols 6-9  PCR group (merge across 4)
   "RADIALS", "",                   // cols 10-11 RADIALS group (merge across 2)
   "NYLONS", "", "",                // cols 12-14 NYLONS group (merge across 3)
-  "",                              // col 15 Tread Cuts (outside groups)
+  "", "",                          // cols 15-16 extra (outside groups)
 ];
 
 export const CUTTING_FIELD_HEADER_ROW = [
@@ -47,7 +48,7 @@ export const CUTTING_FIELD_HEADER_ROW = [
   "Passenger", "4 X 4", "Motorcycle", "Light Commercial",
   "Light Commercial T", "Heavy Commercial T",
   "Agricultural T", "Heavy Commercial T", "Total Number of Nylon T",
-  "Tread Cuts",
+  "Tread Cuts", "Raw Text",
 ];
 
 // Merge ranges for the group header row (row index 0, 0-based):
@@ -103,6 +104,7 @@ export function cuttingSheetRows(records) {
       col14 !== null ? col14 : "",               // 14 Total Number of Nylon T
       // Extra
       col15 !== null ? col15 : "",               // 15 Agri Tread (new format) / Tread Cuts (old format)
+      r.rawMessage || "",                        // 16 Raw Text
     ]);
   }
   return rows;

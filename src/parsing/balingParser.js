@@ -319,11 +319,174 @@ function parseSummaryMetrics(normalized) {
   const m1 = normalized.match(/machine\s*1[^\n]*?(\d{1,2}:\d{2})[^\n]*?(\d{1,2}:\d{2})/i);
   const m2 = normalized.match(/machine\s*2[^\n]*?(\d{1,2}:\d{2})[^\n]*?(\d{1,2}:\d{2})/i);
 
+  const canonicalSummaryCategory = (labelRaw) => {
+    const s = String(labelRaw || "").toUpperCase();
+    if (/\bCA\b|AGRICULTURAL/.test(s)) return "CA";
+    if (/\bPCR\b|\bPB\b|\bB\b|PASSENGER\s*CAR\s*RADIAL/.test(s)) return "PCR";
+    if (/\bCRC\b|CUT\s*RADIAL/.test(s)) return "CRC";
+    if (/\bCRS\b|SCRAP/.test(s)) return "CRS";
+    if (/\bCN\b|NYLON/.test(s)) return "CN";
+    if (/\bTB\b|TUBES?/.test(s)) return "TB";
+    if (/\bPSHRB\b|PASSENGER\s*SHRED\s*BULKBAG/.test(s)) return "PSHRB";
+    if (/\bCONV\b|CONVEYOR/.test(s)) return "CONV";
+    return "";
+  };
+
+  const parseSectionMetrics = (lines, blockCode = "") => {
+    const out = {
+      passengerQty: null,
+      fourx4Qty: null,
+      motorcycleQty: null,
+      lcQty: null,
+      agriT: null,
+      agriSW: null,
+      lcT: null,
+      lcSW: null,
+      hcT: null,
+      hcSW: null,
+      hcWhole: null,
+      nylonT: null,
+      nylonSW: null,
+      weightKg: null,
+      tons: null,
+    };
+    const block = String(blockCode || "").toUpperCase();
+    for (const ln of lines) {
+      const line = String(ln || "").trim();
+      if (!line) continue;
+      const kg = line.match(/\b(\d+(?:\.\d+)?)\s*kg\b/i);
+      if (kg) {
+        const n = Number(kg[1]);
+        if (Number.isFinite(n)) out.weightKg = n;
+      }
+      const tn = line.match(/\b(\d+(?:\.\d+)?)\s*tons?\b/i);
+      if (tn) {
+        const n = Number(tn[1]);
+        if (Number.isFinite(n)) out.tons = n;
+      }
+      const kv = line.match(/^([A-Za-z0-9\s()\/._-]+?)\s*[:\-]\s*(\d+)\b/i);
+      if (!kv) continue;
+      const k = kv[1].toLowerCase();
+      const v = Number(kv[2]);
+      if (!Number.isFinite(v)) continue;
+
+      // Block-first mapping: once section type is known, map into that type only.
+      if (block === "CN") {
+        if (/side\s*walls?|\bsw\b/.test(k)) out.nylonSW = v;
+        else if (/light\s*commercial|\blc\b|nylon|treads?|\bt\b/.test(k)) out.nylonT = v;
+        else if (/weight|kg|tons?/.test(k)) { /* handled above */ }
+        continue;
+      }
+      if (block === "CA") {
+        if (/side\s*walls?|\bsw\b/.test(k)) out.agriSW = v;
+        else if (/agri|agricultural|treads?|\bt\b/.test(k)) out.agriT = v;
+        continue;
+      }
+      if (block === "CRC") {
+        if (/\blc\s*sw\b|light\s*commercial\s*sw/.test(k)) out.lcSW = v;
+        else if (/\blc\s*t\b|light\s*commercial\s*t|light\s*commercial|\blc\b/.test(k)) out.lcT = v;
+        else if (/\bhc\s*sw\b|heavy\s*commercial\s*sw|side\s*walls?/.test(k)) out.hcSW = v;
+        else if (/\bhc\b|heavy\s*commercial/.test(k)) out.hcT = v;
+        else if (/hc\s*full|whole/.test(k)) out.hcWhole = v;
+        continue;
+      }
+      if (block === "CRS") {
+        if (/side\s*walls?|\bsw\b/.test(k)) out.hcSW = v;
+        else if (/\bhc\b|heavy\s*commercial|whole|full|treads?|\bt\b/.test(k)) out.hcT = v;
+        else if (/hc\s*full|whole/.test(k)) out.hcWhole = v;
+        continue;
+      }
+      if (block === "TB" || block === "PSHRB" || block === "CONV") {
+        // Weight-only blocks for summary purposes; nothing to map from tyre kv lines.
+        continue;
+      }
+
+      // Generic mapping fallback (covers PCR and unknown blocks)
+      if (/pass/.test(k)) out.passengerQty = v;
+      else if (/4\s*x\s*4|4x4/.test(k)) out.fourx4Qty = v;
+      else if (/motor|mc/.test(k)) out.motorcycleQty = v;
+      else if (/light\s*commercial|\blc\b/.test(k)) out.lcQty = v;
+      else if (/agri|agricultural/.test(k)) out.agriT = v;
+      else if (/side\s*walls?|\bsw\b/.test(k)) {
+        if (out.agriT !== null && out.agriSW === null) out.agriSW = v;
+        else if (out.lcQty !== null && out.lcSW === null) out.lcSW = v;
+        else if (out.hcT !== null && out.hcSW === null) out.hcSW = v;
+        else if (out.nylonT !== null && out.nylonSW === null) out.nylonSW = v;
+      } else if (/\blc\s*t\b|lc\s*treads?/.test(k)) out.lcT = v;
+      else if (/\blc\s*sw\b/.test(k)) out.lcSW = v;
+      else if (/\bhc\b|heavy\s*commercial/.test(k)) out.hcT = v;
+      else if (/hc\s*full|whole/.test(k)) out.hcWhole = v;
+      else if (/nylon/.test(k)) out.nylonT = v;
+    }
+    return out;
+  };
+
+  const parseSummaryCategoryBlocks = (text) => {
+    const parseSectionHeaderLine = (lineRaw) => {
+      const line = String(lineRaw || "").trim();
+      if (!line) return null;
+
+      // INT <sep> CATEGORY  e.g. "20 - CA (Agricultural)"
+      let m = line.match(/^(\d+)\s*[-:=]\s*([A-Za-z][A-Za-z\s()\/._-]+)$/i);
+      if (m) {
+        const code = canonicalSummaryCategory(m[2]);
+        if (code) return { code, label: m[2], baleCount: Number(m[1]) };
+      }
+
+      // CATEGORY <sep> INT  e.g. "CA (Agricultural) = 20"
+      m = line.match(/^((?:PShrB|ConV|CRC|CRS|PCR|PB|CA|TB|CN|SR|CR|B)\b[^:=\-]*)\s*[-:=]\s*(\d+)$/i);
+      if (m) {
+        const code = canonicalSummaryCategory(m[1]);
+        if (code) return { code, label: m[1], baleCount: Number(m[2]) };
+      }
+
+      return null;
+    };
+
+    const lines = String(text || "").split("\n").map((s) => s.trim());
+    const blocks = {};
+    let current = null;
+    let currentLines = [];
+
+    const flush = () => {
+      if (!current) return;
+      const metrics = parseSectionMetrics(currentLines, current.code);
+      blocks[current.code] = {
+        code: current.code,
+        label: current.label,
+        baleCount: current.baleCount,
+        ...metrics,
+      };
+      current = null;
+      currentLines = [];
+    };
+
+    for (const line of lines) {
+      if (!line) continue;
+      const section = parseSectionHeaderLine(line);
+      if (section) {
+        flush();
+        current = section;
+        continue;
+      }
+      if (/^_?\s*baler\s*machine\b/i.test(line) || /^\s*total\s*bales?\b/i.test(line)) {
+        flush();
+        continue;
+      }
+      if (current) currentLines.push(line);
+    }
+    flush();
+    return blocks;
+  };
+
+  const summaryCategories = parseSummaryCategoryBlocks(normalized);
+
   return {
     items,
     warnings,
     baleCount: baleCountMatch ? Number(baleCountMatch[1]) : null,
     tons: tonsMatch ? Number(tonsMatch[1]) : null,
+    summaryCategories,
     machine1Start: m1 ? m1[1] : "",
     machine1Finish: m1 ? m1[2] : "",
     machine2Start: m2 ? m2[1] : "",
@@ -404,6 +567,24 @@ function makeBaseRow(msg, normalized) {
     totalQty: parseTotalQty(normalized),
     rawMessage: msg.body,
     normalizedMessage: normalized,
+  };
+}
+
+function extractSummaryBodyDate(normalized) {
+  const text = String(normalized || "");
+  // Supports:
+  // "Daily summary: 02/02/2026"
+  // "*Daily summary:* 02/02/2026"
+  // "Daily summary:\n02/02/2026"
+  let m = text.match(/\bdaily\s*summary\b[^\d\n\r]*(?:\n\s*)?(\d{1,2})\/(\d{1,2})\/(\d{2,4})\b/i);
+  if (!m) m = text.match(/(?:^|\n)\s*[*_]*\s*daily\s*summary\s*[*_]*\s*[:\-]?\s*(\d{1,2})\/(\d{1,2})\/(\d{2,4})\b/i);
+  if (!m) return null;
+  const yy = Number(m[3]);
+  const year = String(m[3]).length === 2 ? (2000 + yy) : yy;
+  return {
+    day: Number(m[1]),
+    month: Number(m[2]),
+    year,
   };
 }
 
@@ -500,12 +681,20 @@ export function processBalingMessageOldFormat(msg, normalized, result, seenProdu
 
   if (subtype === "summary") {
     const metrics = parseSummaryMetrics(normalized);
+    const summaryBodyDate = extractSummaryBodyDate(normalized);
+    const summaryParsedDate = resolveParsedDate(summaryBodyDate, msg.tsDate || null);
     const summary = {
       ...base,
+      chatDateParsed: summaryParsedDate,
+      date: summaryParsedDate,
+      bodyDate: summaryBodyDate || base.bodyDate || null,
+      bodyDateText: summaryBodyDate ? dateToStr(summaryBodyDate) : (base.bodyDateText || ""),
+      usedTimestampFallbackForFutureBodyDate: isFutureBodyDate(summaryBodyDate),
       summaryType: detectSummaryType(normalized),
       machine: base.machine || "",
       baleCount: metrics.baleCount,
       tons: metrics.tons,
+      summaryCategories: metrics.summaryCategories || {},
       passengerQty: metrics.items.passenger || null,
       fourx4Qty: metrics.items.fourx4 || null,
       lcQty: metrics.items.lc || null,

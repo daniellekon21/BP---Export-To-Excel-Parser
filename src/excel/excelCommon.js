@@ -49,7 +49,7 @@ export function styleBodyRows(ws, fromRow, toRow, baseBorder) {
   for (let r = fromRow; r <= toRow; r += 1) {
     const row = ws.getRow(r);
     row.eachCell((cell) => {
-      cell.alignment = { vertical: "middle", horizontal: "left", wrapText: true };
+      cell.alignment = { vertical: "middle", horizontal: "center", wrapText: true };
       cell.border = baseBorder;
     });
   }

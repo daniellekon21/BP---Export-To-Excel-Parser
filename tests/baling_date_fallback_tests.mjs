@@ -98,3 +98,102 @@ run("Start/Finish with '=' are parsed and duration is computed from end-start wh
   assert.equal(r.finishTime?.m, 49);
   assert.equal(r.durationMinutes, 18);
 });
+
+run("daily summary category headers parse in both orders, separators, spacing, and case-insensitive", () => {
+  const chat = [
+    "2026/02/02, 18:40 - Tester: *Daily summary:* 02/02/2026",
+    "",
+    "  20    -    ca (Agricultural)",
+    "Agricultural - 719",
+    "Sidewalls - 727",
+    "17644 kg",
+    "",
+    "CRC = 4",
+    "LC T: 130",
+    "Sidewalls: 86",
+    "3949 kg",
+    "",
+    "pShRb : 2",
+    "1020 kg",
+    "",
+    "ConV - 1",
+    "600 kg",
+  ].join("\n");
+
+  const parsed = parseBalingMessages(chat);
+  assert.equal(parsed.summaryRecords.length, 1);
+  const s = parsed.summaryRecords[0];
+  assert.equal(s.chatDateParsed.year, 2026);
+  assert.equal(s.chatDateParsed.month, 2);
+  assert.equal(s.chatDateParsed.day, 2);
+  assert.equal(s.summaryCategories.CA.baleCount, 20);
+  assert.equal(s.summaryCategories.CRC.baleCount, 4);
+  assert.equal(s.summaryCategories.PSHRB.baleCount, 2);
+  assert.equal(s.summaryCategories.CONV.baleCount, 1);
+});
+
+run("daily summary block parsing keeps CA fields in CA block and maps PB block to PCR", () => {
+  const chat = [
+    "2026/03/08, 18:40 - Tester: *Daily summary:* 17/02/2026",
+    "",
+    "12 - CA (Agricultural)",
+    "Agricultural - 413",
+    "Sidewalls - 463",
+    "10839 kg",
+    "10.839 tons",
+    "",
+    "06 - PB (Passenger)",
+    "Motorcycle - 1122",
+    "5420 kg",
+    "5.420 tons",
+    "",
+    "Baler Machine One - 11 Bales",
+    "Baler Machine Two - 07 Bales",
+    "Total Bales - 18",
+  ].join("\n");
+
+  const parsed = parseBalingMessages(chat);
+  assert.equal(parsed.summaryRecords.length, 1);
+  const s = parsed.summaryRecords[0];
+
+  // Date should come from body summary line, not WhatsApp timestamp fallback.
+  assert.equal(s.chatDateParsed.year, 2026);
+  assert.equal(s.chatDateParsed.month, 2);
+  assert.equal(s.chatDateParsed.day, 17);
+
+  // CA block
+  assert.equal(s.summaryCategories.CA.baleCount, 12);
+  assert.equal(s.summaryCategories.CA.agriT, 413);
+  assert.equal(s.summaryCategories.CA.agriSW, 463);
+  assert.equal(s.summaryCategories.CA.weightKg, 10839);
+  assert.equal(s.summaryCategories.CA.tons, 10.839);
+
+  // PB block should map to PCR and keep block-local values.
+  assert.equal(s.summaryCategories.PCR.baleCount, 6);
+  assert.equal(s.summaryCategories.PCR.motorcycleQty, 1122);
+  assert.equal(s.summaryCategories.PCR.weightKg, 5420);
+  assert.equal(s.summaryCategories.PCR.tons, 5.42);
+});
+
+run("daily summary CN block maps Light Commercial + Sidewalls into Nylon T/SW", () => {
+  const chat = [
+    "2026/01/05, 20:00 - Tester: *Daily summary:* 05/01/2026",
+    "",
+    "06 - CN (Cut Nylons)",
+    "Light Commercial - 365",
+    "Sidewalls - 193",
+    "5467 kg",
+    "5.467 tons",
+  ].join("\n");
+
+  const parsed = parseBalingMessages(chat);
+  assert.equal(parsed.summaryRecords.length, 1);
+  const s = parsed.summaryRecords[0];
+  assert.equal(s.summaryCategories.CN.baleCount, 6);
+  assert.equal(s.summaryCategories.CN.nylonT, 365);
+  assert.equal(s.summaryCategories.CN.nylonSW, 193);
+  assert.equal(s.summaryCategories.CN.lcQty, null);
+  assert.equal(s.summaryCategories.CN.lcSW, null);
+  assert.equal(s.summaryCategories.CN.weightKg, 5467);
+  assert.equal(s.summaryCategories.CN.tons, 5.467);
+});
