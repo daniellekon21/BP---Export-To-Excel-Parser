@@ -1,8 +1,10 @@
 import { useState, useCallback, useRef, useMemo } from "react";
-import { formatTime, dateToStr, monthLabel, MONTH_NAMES } from "./helpers.js";
+import { dateToStr, monthLabel, MONTH_NAMES } from "./helpers.js";
 import { parseCuttingMessages, parseCuttingMessagesNew } from "./parsing/cuttingParser.js";
 import { parseBalingMessagesNew, parseBalingMessagesOldWithFallback } from "./parsing/balingParserNew.js";
 import { downloadWorkbook } from "./excel/downloadWorkbook.js";
+import CuttingResultsTable from "./components/CuttingResultsTable.jsx";
+import BalingResultsTable from "./components/BalingResultsTable.jsx";
 
 function getQuarter(month) {
   return Math.ceil(month / 3);
@@ -504,63 +506,9 @@ export default function App() {
           {exportScopeWarning && <p style={{ margin: "-8px 0 12px", fontSize: 12, color: "#B45309" }}>⚠ {exportScopeWarning}</p>}
 
           <div style={{ background: "white", borderRadius: 16, border: "1px solid #E5E7EB", overflow: "auto", boxShadow: "0 1px 3px rgba(0,0,0,0.04)" }}>
-            {chatType === "baling" ? (
-              <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 12 }}>
-                <thead>
-                  <tr style={{ background: "#F9FAFB" }}>
-                    {["Date", "Type", "Machine", "Bale", "Status", "Start", "Finish", "Passenger", "4x4", "LC", "MC", "SR", "Agri", "Weight", "Notes"].map((h) => (
-                      <th key={h} style={{ padding: "10px 8px", textAlign: "left", borderBottom: "1px solid #E5E7EB", fontWeight: 600, whiteSpace: "nowrap", color: mutedText, fontSize: 11, textTransform: "uppercase", letterSpacing: 0.5 }}>{h}</th>
-                    ))}
-                  </tr>
-                </thead>
-                <tbody>
-                  {visibleRecords.slice(0, 100).map((r, i) => (
-                    <tr key={i} style={{ borderBottom: "1px solid #F3F4F6" }}>
-                      <td style={{ padding: "8px" }}>{r.date ? dateToStr(r.date) : "—"}</td>
-                      <td style={{ padding: "8px" }}>{r.recordType || "—"}</td>
-                      <td style={{ padding: "8px" }}>{r.machine || "—"}</td>
-                      <td style={{ padding: "8px" }}>{r.baleNumber || r.baleTestCode || "—"}</td>
-                      <td style={{ padding: "8px" }}>{r.status || "—"}</td>
-                      <td style={{ padding: "8px" }}>{r.startTime ? formatTime(r.startTime) : "—"}</td>
-                      <td style={{ padding: "8px" }}>{r.finishTime ? formatTime(r.finishTime) : "—"}</td>
-                      <td style={{ padding: "8px" }}>{r.passengerQty ?? "—"}</td>
-                      <td style={{ padding: "8px" }}>{r.fourx4Qty ?? "—"}</td>
-                      <td style={{ padding: "8px" }}>{r.lcQty ?? "—"}</td>
-                      <td style={{ padding: "8px" }}>{r.motorcycleQty ?? "—"}</td>
-                      <td style={{ padding: "8px" }}>{r.srQty ?? "—"}</td>
-                      <td style={{ padding: "8px" }}>{r.agriQty ?? "—"}</td>
-                      <td style={{ padding: "8px", fontWeight: 600 }}>{r.weightKg ?? "—"}</td>
-                      <td style={{ padding: "8px" }}>{r.notesFlags || "—"}</td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            ) : (
-              <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 12 }}>
-                <thead>
-                  <tr style={{ background: "#F9FAFB" }}>
-                    {["Date", "Machine", "Time", "LC", "HC", "Agri", "Tread LC", "Tread HC", "Tread Agri"].map((h) => (
-                      <th key={h} style={{ padding: "10px 8px", textAlign: "left", borderBottom: "1px solid #E5E7EB", fontWeight: 600, whiteSpace: "nowrap", color: mutedText, fontSize: 11, textTransform: "uppercase", letterSpacing: 0.5 }}>{h}</th>
-                    ))}
-                  </tr>
-                </thead>
-                <tbody>
-                  {visibleRecords.slice(0, 100).map((r, i) => (
-                    <tr key={i} style={{ borderBottom: "1px solid #F3F4F6" }}>
-                      <td style={{ padding: "8px" }}>{dateToStr(r.date)}</td>
-                      <td style={{ padding: "8px" }}>{r.cmNumber}</td>
-                      <td style={{ padding: "8px" }}>{r.startTime && r.finishTime ? `${formatTime(r.startTime)}-${formatTime(r.finishTime)}` : "—"}</td>
-                      <td style={{ padding: "8px", fontWeight: 600 }}>{r.light_commercial ?? "—"}</td>
-                      <td style={{ padding: "8px", fontWeight: 600 }}>{r.heavy_commercial_t ?? "—"}</td>
-                      <td style={{ padding: "8px", fontWeight: 600 }}>{r.agricultural_t ?? "—"}</td>
-                      <td style={{ padding: "8px" }}>{r.tread_lc ?? "—"}</td>
-                      <td style={{ padding: "8px" }}>{r.tread_hc ?? "—"}</td>
-                      <td style={{ padding: "8px" }}>{r.tread_agri ?? "—"}</td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            )}
+            {chatType === "baling"
+              ? <BalingResultsTable records={visibleRecords} />
+              : <CuttingResultsTable records={visibleRecords} />}
             {visibleRecords.length > 100 && <p style={{ textAlign: "center", padding: 12, fontSize: 12, color: mutedText }}>Showing first 100 of {visibleRecords.length} records. All {visibleRecords.length} will be included in the download.</p>}
           </div>
 
