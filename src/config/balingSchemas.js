@@ -141,7 +141,7 @@ export const BALING_SUMMARY_HEADERS = [
 //   while HC(Cut) and bare HC map to hc (cut heavy commercial).
 
 export const BALING_CATEGORY_ALIASES = [
-  { key: "passenger", pattern: /\bpassengers?\b|\bpass\b|\bpcr\b|\bPass\./i },
+  { key: "passenger", pattern: /\bpassengers?\b|\bpass\b|\bpa\b|\bP\b|\bpcr\b|\bPass\./i },
   { key: "fourx4", pattern: /\b4\s*x\s*4\b|\b4x4\b/i },
   { key: "lc", pattern: /\blight\s*commercials?\b|\blight\s*comm\b|\blc\b/i },
   { key: "motorcycle", pattern: /\bmotor\s*cycle\b|\bmotorcycle\b|\bmc\b/i },

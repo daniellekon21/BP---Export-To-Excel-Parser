@@ -242,8 +242,10 @@ function extractItemPairs(normalized) {
     fourx4: 0,
     lc: 0,
     lcWhole: 0,
+    lcSideWall: 0,
     hc: 0,
     hcWhole: 0,
+    hcSideWall: 0,
     motorcycle: 0,
     sr: 0,
     agri: 0,
@@ -256,56 +258,81 @@ function extractItemPairs(normalized) {
 
   const lines = normalized.split("\n").map((s) => s.trim()).filter(Boolean);
   const itemLikeLines = lines.filter((line) => {
-    const hasItemSignal = /\bitem\b|\bpassengers?\b|\bPass\.|\b4x4\b|\blight\s*commercial\b|\blc\b|\bmotorcycle\b|\bheavy\s*commercial\b|\bHC\b|\bagri\b|\bsr\b|\bside\s*wall\b|\bsw\b|\btreads?\b|\blct\b|\bhct\b|\btubes?\b|\bT\s*[-:]\s*\d/i.test(line);
+    const hasItemSignal = /\bitem\b|\bpassengers?\b|\bpass\b|\bpa\b|\bPass\.|\b4x4\b|\blight\s*commercial\b|\blc\b|\bmotorcycle\b|\bmc\b|\bheavy\s*commercial\b|\bHC\b|\bagri\b|\bsr\b|\bside\s*wall\b|\bsw\b|\btreads?\b|\blct\b|\bhct\b|\btubes?\b|\bT\s*[-:]\s*\d/i.test(line);
     const hasStrongItemPrefix = /\bitem\b/i.test(line);
     const isMetaLine = /\bdate\b|\boperator\b|\bassistant\b|\bstart\b|\bfinish\b|\bmachine\b/i.test(line) && !hasStrongItemPrefix;
     return hasItemSignal && !isMetaLine;
   });
 
-  const sourceText = itemLikeLines.length > 0 ? itemLikeLines.join(", ") : normalized;
+  const sourceLines = itemLikeLines.length > 0 ? itemLikeLines : normalized.split("\n").map((s) => s.trim()).filter(Boolean);
 
-  const cleaned = sourceText
-    .replace(/\bweight\s*[:\-]?\s*\d+(?:\.\d+)?\s*kg\b/gi, "")
-    .replace(/\btotal\s*(?:qty)?\s*[:\-]?\s*\d+\b/gi, "")
-    .replace(/\bitem\s*[:\-]/gi, "")
-    .replace(/\bqty\b/gi, "")
-    .replace(/\s-\s*(?=(?:passengers?|4x4|light commercial|lc\b|heavy commercial|HC\b|motorcycle|sr\b|agri\b|treads?\b|side wall|sw\b|lct\b|hct\b|tubes?\b))/gi, ", ")
-    .replace(/\n/g, ", ");
+  // Track last seen main category (lc/hc) so standalone SW lines route to the right bucket.
+  let lastMainCategory = null;
 
-  const chunks = cleaned.split(",").map((s) => s.trim()).filter(Boolean);
-  for (const chunk of chunks) {
-    const hcWholeMatch = chunk.match(/\bhc\s*full\b\s*[:\-]?\s*(\d+)\b/i);
-    if (hcWholeMatch) {
-      items.hcWhole += Number(hcWholeMatch[1]);
-      continue;
-    }
-    const lcWholeMatch = chunk.match(/\blc\s*full\b\s*[:\-]?\s*(\d+)\b/i);
-    if (lcWholeMatch) {
-      items.lcWhole += Number(lcWholeMatch[1]);
-      continue;
-    }
+  for (const rawLine of sourceLines) {
+    const cleaned = rawLine
+      .replace(/\bweight\s*[:\-]?\s*\d+(?:\.\d+)?\s*kg\b/gi, "")
+      .replace(/\btotal\s*(?:qty)?\s*[:\-]?\s*\d+\b/gi, "")
+      .replace(/\bitem\s*[:\-]/gi, "")
+      .replace(/\bqty\b/gi, "")
+      .replace(/\s-\s*(?=(?:passengers?|pass\b|pa\b|4x4|light commercial|lc\b|heavy commercial|HC\b|motorcycle|sr\b|agri\b|treads?\b|side wall|sw\b|lct\b|hct\b|tubes?\b))/gi, ", ")
+      .replace(/\n/g, ", ");
 
-    const key = mapAliasToKey(chunk);
-    const nums = chunk.match(/\d+/g);
-    const qty = nums ? Number(nums[nums.length - 1]) : null;
-
-    if (key && Number.isFinite(qty)) {
-      items[key] += qty;
-      continue;
-    }
-
-    const reverse = chunk.match(/^(\d+)\s+(.+)$/);
-    if (reverse) {
-      const revKey = mapAliasToKey(reverse[2]);
-      if (revKey) {
-        items[revKey] += Number(reverse[1]);
+    const chunks = cleaned.split(",").map((s) => s.trim()).filter(Boolean);
+    for (const chunk of chunks) {
+      const hcWholeMatch = chunk.match(/\bhc\s*full\b\s*[:\-]?\s*(\d+)\b/i);
+      if (hcWholeMatch) {
+        items.hcWhole += Number(hcWholeMatch[1]);
+        lastMainCategory = "hc";
         continue;
       }
-    }
+      const lcWholeMatch = chunk.match(/\blc\s*full\b\s*[:\-]?\s*(\d+)\b/i);
+      if (lcWholeMatch) {
+        items.lcWhole += Number(lcWholeMatch[1]);
+        lastMainCategory = "lc";
+        continue;
+      }
 
-    if (/\d/.test(chunk) && /item|qty|pass|4x4|lc|motor|side|tread|agri|sr/i.test(chunk)) {
-      warnings.push(`Unknown category segment: "${chunk}"`);
-      items.otherRaw.push(chunk);
+      const key = mapAliasToKey(chunk);
+      const nums = chunk.match(/\d+/g);
+      const qty = nums ? Number(nums[nums.length - 1]) : null;
+
+      if (key && Number.isFinite(qty)) {
+        if (key === "lc") lastMainCategory = "lc";
+        else if (key === "hc") lastMainCategory = "hc";
+
+        if (key === "sideWall" && lastMainCategory === "lc") {
+          items.lcSideWall += qty;
+        } else if (key === "sideWall" && lastMainCategory === "hc") {
+          items.hcSideWall += qty;
+        } else {
+          items[key] += qty;
+        }
+        continue;
+      }
+
+      const reverse = chunk.match(/^(\d+)\s+(.+)$/);
+      if (reverse) {
+        const revKey = mapAliasToKey(reverse[2]);
+        if (revKey) {
+          if (revKey === "lc") lastMainCategory = "lc";
+          else if (revKey === "hc") lastMainCategory = "hc";
+
+          if (revKey === "sideWall" && lastMainCategory === "lc") {
+            items.lcSideWall += Number(reverse[1]);
+          } else if (revKey === "sideWall" && lastMainCategory === "hc") {
+            items.hcSideWall += Number(reverse[1]);
+          } else {
+            items[revKey] += Number(reverse[1]);
+          }
+          continue;
+        }
+      }
+
+      if (/\d/.test(chunk) && /item|qty|pass|4x4|lc|motor|side|tread|agri|sr/i.test(chunk)) {
+        warnings.push(`Unknown category segment: "${chunk}"`);
+        items.otherRaw.push(chunk);
+      }
     }
   }
 
@@ -770,6 +797,8 @@ export function processBalingMessageOldFormat(msg, normalized, result, seenProdu
     agriQty: items.agri || null,
     treadQty: items.tread || null,
     sideWallQty: items.sideWall || null,
+    lcSideWall: items.lcSideWall || null,
+    hcSideWall: items.hcSideWall || null,
     tubeQty: items.tube || null,
     otherItemRaw: items.otherRaw.join(" | "),
     recordType: subtype.toUpperCase(),
