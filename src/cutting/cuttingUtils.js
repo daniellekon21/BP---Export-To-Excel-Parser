@@ -224,12 +224,15 @@ export function parseSummaryBlocks(body) {
   let cur = null;
   let section = null;
   let lastTypeField = null;
+  let seenTotal = false;
 
   function applyTypeQty(rawType, qty, forceTread = false) {
     const t = rawType.trim().toLowerCase();
     if (forceTread || /^tread\s+lc$/.test(t)) { cur.tread_lc = qty; return; }
     if (forceTread || /^tread\s+hc$/.test(t)) { cur.tread_hc = qty; return; }
     if (forceTread || /^tread\s+agri/.test(t)) { cur.tread_agri = qty; return; }
+    // Bare "radials" (no LC/HC qualifier) → direct radials total
+    if (/^radials?$/.test(t)) { cur.radials_total = qty; return; }
     const col = mapTyreType(rawType);
     if (col === "light_commercial") cur.lc = qty;
     else if (col === "heavy_commercial_t") cur.hc = qty;
@@ -237,27 +240,34 @@ export function parseSummaryBlocks(body) {
   }
 
   function parseInlinePayload(payload) {
-    const s = payload.trim();
+    const s = payload.replace(/\*/g, "").trim();
     if (!s || /n\/?a|not\s+in\s+use|offloading|off\b/i.test(s)) return;
     const pairs = [...s.matchAll(/([A-Za-z][A-Za-z ]+?)\s*[-=:]\s*(\d+)/g)];
     if (pairs.length > 0) { for (const m of pairs) applyTypeQty(m[1], parseInt(m[2], 10)); return; }
     const loose = s.match(/^([A-Za-z][A-Za-z ]+)\s+(\d+)$/);
-    if (loose) applyTypeQty(loose[1], parseInt(loose[2], 10));
+    if (loose) { applyTypeQty(loose[1], parseInt(loose[2], 10)); return; }
+    // "Count Type" format: e.g. "119 Agri", "131- Light Commercial", "12 - Heavy commercial"
+    const countFirst = s.match(/^(\d+)\s*[-–]?\s*([A-Za-z][A-Za-z ]*[A-Za-z])$/);
+    if (countFirst) applyTypeQty(countFirst[2], parseInt(countFirst[1], 10));
   }
 
   for (const rawLine of body.split("\n")) {
     const line = rawLine.trim();
-    if (!line || /(?:cutting\s+)?summary\b/i.test(line)) continue;
+    const clean = line.replace(/\*/g, "").trim();
+    if (!clean || /(?:cutting\s+)?summary\b/i.test(clean)) continue;
+    // Skip total lines (e.g. "Total= 281 light commercial Tyres", "Total Tyres - 321")
+    // Once we see a total, stop attributing stray lines to the last CM block
+    if (/^total\b/i.test(clean)) { seenTotal = true; continue; }
 
     const cutterMatch = line.match(/^\*?(?:cutter|cm)\s*[- ]?(\d+)\*?(?:\s*[:=\-]\s*(.*))?$/i);
     if (cutterMatch) {
       if (cur) blocks.push(cur);
-      cur = { cmNum: parseInt(cutterMatch[1], 10), lc: null, hc: null, agri: null, tread_lc: null, tread_hc: null, tread_agri: null };
-      section = null; lastTypeField = null;
+      cur = { cmNum: parseInt(cutterMatch[1], 10), lc: null, hc: null, agri: null, tread_lc: null, tread_hc: null, tread_agri: null, radials_total: null };
+      section = null; lastTypeField = null; seenTotal = false;
       if (cutterMatch[2]) parseInlinePayload(cutterMatch[2]);
       continue;
     }
-    if (!cur) continue;
+    if (!cur || seenTotal) continue;
 
     if (/^total\s+tyre/i.test(line)) { section = "tyre"; continue; }
     if (/^total\s+tread/i.test(line)) { section = "tread"; continue; }

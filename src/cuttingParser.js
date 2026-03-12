@@ -73,12 +73,12 @@ export function parseCuttingMessagesNew(text) {
 
       if (blocks.length > 0) {
         for (const b of blocks) {
-          const hasAnyValue = b.lc !== null || b.hc !== null || b.agri !== null || b.tread_lc !== null || b.tread_hc !== null || b.tread_agri !== null;
+          const hasAnyValue = b.lc !== null || b.hc !== null || b.agri !== null || b.tread_lc !== null || b.tread_hc !== null || b.tread_agri !== null || b.radials_total !== null;
           if (!hasAnyValue) {
             validationLog.push({ date: dateStr, time: "", messageType: "Summary", cutter: `CM - ${b.cmNum}`, issue: "Summary block has no parseable tyre/tread values", action: "Summary row skipped" });
             continue;
           }
-          summaryRecords.push({ date, series, cmNumber: `CM - ${b.cmNum}`, lc: b.lc, hc: b.hc, agri: b.agri, tread_lc: b.tread_lc, tread_hc: b.tread_hc, tread_agri: b.tread_agri });
+          summaryRecords.push({ date, series, cmNumber: `CM - ${b.cmNum}`, lc: b.lc, hc: b.hc, agri: b.agri, tread_lc: b.tread_lc, tread_hc: b.tread_hc, tread_agri: b.tread_agri, radials_total: b.radials_total });
         }
         continue;
       }
@@ -91,7 +91,7 @@ export function parseCuttingMessagesNew(text) {
             validationLog.push({ date: dateStr, time: "", messageType: "Summary", cutter: cmLabel, issue: `Ambiguous legacy daily summary type in "${b.raw}"`, action: "Summary row skipped" });
             continue;
           }
-          summaryRecords.push({ date, series, cmNumber: cmLabel, lc: inferredType === "lc" ? b.qty : null, hc: inferredType === "hc" ? b.qty : null, agri: inferredType === "agri" ? b.qty : null, tread_lc: null, tread_hc: null, tread_agri: null });
+          summaryRecords.push({ date, series, cmNumber: cmLabel, lc: inferredType === "lc" ? b.qty : null, hc: inferredType === "hc" ? b.qty : null, agri: inferredType === "agri" ? b.qty : null, tread_lc: null, tread_hc: null, tread_agri: null, radials_total: null });
         }
       }
       continue;
@@ -227,12 +227,12 @@ export function parseCuttingMessages(text) {
       let blocks = parseSummaryBlocks(body);
       if (blocks.length === 0) blocks = parseLegacyCuttingSummaryBlocks(body);
       for (const b of blocks) {
-        const hasAnyValue = b.lc !== null || b.hc !== null || b.agri !== null || b.tread_lc !== null || b.tread_hc !== null || b.tread_agri !== null;
+        const hasAnyValue = b.lc !== null || b.hc !== null || b.agri !== null || b.tread_lc !== null || b.tread_hc !== null || b.tread_agri !== null || b.radials_total !== null;
         if (!hasAnyValue && !b._hasMarker) {
           validationLog.push({ date: dateStr, time: "", messageType: "Summary", cutter: `CM - ${b.cmNum}`, issue: "Summary block has no parseable tyre/tread values", action: "Summary row skipped" });
           continue;
         }
-        summaryRecords.push({ date, series, cmNumber: `CM - ${b.cmNum}`, lc: b.lc, hc: b.hc, agri: b.agri, tread_lc: b.tread_lc, tread_hc: b.tread_hc, tread_agri: b.tread_agri });
+        summaryRecords.push({ date, series, cmNumber: `CM - ${b.cmNum}`, lc: b.lc, hc: b.hc, agri: b.agri, tread_lc: b.tread_lc, tread_hc: b.tread_hc, tread_agri: b.tread_agri, radials_total: b.radials_total });
       }
       continue;
     }
@@ -245,7 +245,7 @@ export function parseCuttingMessages(text) {
           validationLog.push({ date: dateStr, time: "", messageType: "Summary", cutter: cmLabel, issue: `Ambiguous legacy daily summary type in "${b.raw}"`, action: "Summary row skipped" });
           continue;
         }
-        summaryRecords.push({ date, series, cmNumber: cmLabel, lc: inferredType === "lc" ? b.qty : null, hc: inferredType === "hc" ? b.qty : null, agri: inferredType === "agri" ? b.qty : null, tread_lc: null, tread_hc: null, tread_agri: null });
+        summaryRecords.push({ date, series, cmNumber: cmLabel, lc: inferredType === "lc" ? b.qty : null, hc: inferredType === "hc" ? b.qty : null, agri: inferredType === "agri" ? b.qty : null, tread_lc: null, tread_hc: null, tread_agri: null, radials_total: null });
       }
       continue;
     }

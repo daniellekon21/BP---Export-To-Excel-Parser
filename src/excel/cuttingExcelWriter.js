@@ -25,11 +25,11 @@ function withSummaryPlaceholders(summaryRows) {
         date: s.date,
         cmNumber: `CM - ${cm}`,
         lc: null, hc: null, agri: null,
-        tread_lc: null, tread_hc: null, tread_agri: null,
+        tread_lc: null, tread_hc: null, tread_agri: null, radials_total: null,
       });
     }
     const cur = bucket.get(cm);
-    for (const k of ["lc", "hc", "agri", "tread_lc", "tread_hc", "tread_agri"]) {
+    for (const k of ["lc", "hc", "agri", "tread_lc", "tread_hc", "tread_agri", "radials_total"]) {
       if (s[k] !== null && s[k] !== undefined) cur[k] = s[k];
     }
   }
@@ -43,7 +43,7 @@ function withSummaryPlaceholders(summaryRows) {
         date: d.date,
         cmNumber: `CM - ${cm}`,
         lc: null, hc: null, agri: null,
-        tread_lc: null, tread_hc: null, tread_agri: null,
+        tread_lc: null, tread_hc: null, tread_agri: null, radials_total: null,
       });
     }
   }
@@ -123,23 +123,22 @@ function styleTotalsRow(row, styles) {
 }
 
 function styleDailySummaryHeaderRows(titleRow, fieldRow, styles) {
-  const summaryGreenDark = "FF2F7D4A";
-  const summaryGreenLight = "FFE6F4EA";
+  const summaryBlueDark = "FF1F4E79";
 
-  titleRow.eachCell((cell) => {
-    cell.font = { bold: true, color: { argb: styles.textWhite } };
-    cell.fill = { type: "pattern", pattern: "solid", fgColor: { argb: summaryGreenDark } };
-    cell.alignment = { vertical: "middle", horizontal: "center", wrapText: true };
+  titleRow.eachCell((cell, colNumber) => {
+    cell.font = { bold: true, size: colNumber === 1 ? 16 : 12, color: { argb: styles.textWhite } };
+    cell.fill = { type: "pattern", pattern: "solid", fgColor: { argb: summaryBlueDark } };
+    cell.alignment = { vertical: "middle", horizontal: colNumber === 1 ? "left" : "center", wrapText: true };
     cell.border = styles.baseBorder;
   });
   fieldRow.eachCell((cell) => {
-    cell.font = { bold: true, color: { argb: styles.textDark } };
-    cell.fill = { type: "pattern", pattern: "solid", fgColor: { argb: summaryGreenLight } };
+    cell.font = { bold: true, color: { argb: styles.textWhite } };
+    cell.fill = { type: "pattern", pattern: "solid", fgColor: { argb: summaryBlueDark } };
     cell.alignment = { vertical: "middle", horizontal: "center", wrapText: true };
     cell.border = styles.baseBorder;
   });
 
-  for (let c = 1; c <= 8; c += 1) {
+  for (let c = 1; c <= 6; c += 1) {
     const topCell = titleRow.getCell(c);
     const bottomCell = fieldRow.getCell(c);
     topCell.border = { ...(topCell.border || {}), top: styles.mediumBlack };
@@ -148,7 +147,7 @@ function styleDailySummaryHeaderRows(titleRow, fieldRow, styles) {
       topCell.border = { ...(topCell.border || {}), left: styles.mediumBlack };
       bottomCell.border = { ...(bottomCell.border || {}), left: styles.mediumBlack };
     }
-    if (c === 8) {
+    if (c === 6) {
       topCell.border = { ...(topCell.border || {}), right: styles.mediumBlack };
       bottomCell.border = { ...(bottomCell.border || {}), right: styles.mediumBlack };
     }
@@ -226,18 +225,19 @@ export async function downloadCuttingWorkbook(records, filename, extras = {}) {
     if (monthSummary.length > 0) {
       const sorted = withSummaryPlaceholders(monthSummary);
       rows.push([]);
-      rows.push(["Daily Summary", "", "LC Tyres", "HC Tyres", "Agri Tyres", "LC Treads", "HC Treads", "Agri Treads"]);
-      rows.push(["Date", "CM Number", "LC", "HC", "Agri", "Tread LC", "Tread HC", "Tread Agri"]);
+      rows.push(["Cutting Summary", "", "", "", "", ""]);
+      rows.push(["Date", "CM Number", "LC", "HC", "Radials Total", "Agri"]);
       for (const s of sorted) {
+        const radialsTotal = s.radials_total !== null && s.radials_total !== undefined
+          ? s.radials_total
+          : (s.lc !== null || s.hc !== null) ? (s.lc ?? 0) + (s.hc ?? 0) : "";
         rows.push([
           dateToStr(s.date),
           s.cmNumber,
           s.lc ?? "",
           s.hc ?? "",
+          radialsTotal,
           s.agri ?? "",
-          s.tread_lc ?? "",
-          s.tread_hc ?? "",
-          s.tread_agri ?? "",
         ]);
       }
     }
@@ -275,7 +275,7 @@ export async function downloadCuttingWorkbook(records, filename, extras = {}) {
     }
 
     if (monthSummary.length > 0) {
-      const summaryTitleRow = rows.findIndex((r) => Array.isArray(r) && r[0] === "Daily Summary") + 1;
+      const summaryTitleRow = rows.findIndex((r) => Array.isArray(r) && r[0] === "Cutting Summary") + 1;
       if (summaryTitleRow > 0) {
         styleDailySummaryHeaderRows(ws.getRow(summaryTitleRow), ws.getRow(summaryTitleRow + 1), styles);
         styleBodyRows(ws, summaryTitleRow + 2, ws.rowCount, styles.baseBorder);
@@ -283,7 +283,7 @@ export async function downloadCuttingWorkbook(records, filename, extras = {}) {
         styleFirstDateRows(ws, 3, summaryTitleRow - 2);
         collapseRepeatedDates(ws, summaryTitleRow + 2, ws.rowCount);
         styleFirstDateRows(ws, summaryTitleRow + 2, ws.rowCount);
-        styleThickFrame(ws, summaryTitleRow, ws.rowCount, 1, 8, styles);
+        styleThickFrame(ws, summaryTitleRow, ws.rowCount, 1, 6, styles);
       } else {
         styleBodyRows(ws, 3, ws.rowCount, styles.baseBorder);
         collapseRepeatedDates(ws, 3, ws.rowCount);
