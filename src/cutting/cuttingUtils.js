@@ -52,8 +52,10 @@ export function classifyLine(line) {
 // Longest match first to avoid "Radial(LC)" landing in the HC column.
 export function mapTyreType(raw) {
   const t = raw.trim().toLowerCase().replace(/[().]/g, " ").replace(/\s+/g, " ").trim();
+  if (/^(?:s|m|l|small|medium|large)$/.test(t))                              return "radialsAgri";
   if (t.includes("nylon"))                                                  return "nylonsLC";
   if (t.includes("agri"))                                                    return "radialsAgri";
+  if (/4.?x.?4/i.test(t))                                                   return "radialsLC";
   if (t.includes("radial") && (t.includes("lc") || t.includes("light")))   return "radialsLC";
   if (t.includes("light") || t.includes("lc"))                              return "radialsLC";
   if (t.includes("heavy") || t.includes("hc") || t.includes("truck") || t.includes("radial")) return "radialsHC";
@@ -64,7 +66,9 @@ export function mapTyreType(raw) {
 // New-format tyre abbreviation → column key.
 export function mapTyreTypeNew(raw) {
   const t = raw.replace(/\*/g, "").trim().toLowerCase();
+  if (/^(?:s|m|l|small|medium|large)$/.test(t)) return "radialsAgri";
   if (t.includes("nylon"))              return "nylonsLC";
+  if (/4.?x.?4/i.test(t))               return "radialsLC";
   if (t === "lc" || t.includes("light")) return "radialsLC";
   if (t === "hc" || t.includes("heavy")) return "radialsHC";
   if (t.startsWith("agri"))              return "radialsAgri";
@@ -99,6 +103,23 @@ export function parseMachineLine(line) {
     const c1 = parseInt(m[2], 10); if (!isNaN(c1)) results.push({ cmNum, column: mapTyreType(m[3]), count: c1 });
     const c2 = parseInt(m[4], 10); if (!isNaN(c2)) results.push({ cmNum, column: mapTyreType(m[5]), count: c2 });
     if (results.length) return results;
+  }
+
+  // Side-wall only: "CM1-51x Side Walls" / "CM1-51 Side Walls" / "CM1-51 SW"
+  // Convert side walls to tyre-equivalent count by dividing by two and rounding up.
+  m = line.match(/CM\s*(\d)\s*[-=]\s*(\d+)\s*(?:x\s*)?(?:side\s*walls?|sw)\b/i);
+  if (m) {
+    const cmNum = parseInt(m[1], 10);
+    const sideWallCount = parseInt(m[2], 10);
+    if (!isNaN(sideWallCount)) {
+      return [{
+        cmNum,
+        column: null,
+        count: Math.ceil(sideWallCount / 2),
+        isSideWall: true,
+        sideWallCount,
+      }];
+    }
   }
 
   // Tread Cut: "CM2-14 (Agri) - Tread Cut 21"
@@ -221,7 +242,7 @@ export function flushCutterBlock(block, meta, records) {
 
 export function isValidNewType(raw) {
   const t = raw.replace(/\*/g, "").trim().toLowerCase();
-  return t === "lc" || t === "hc" || t === "agri" || t === "nylon" || t === "nylons";
+  return t === "lc" || t === "hc" || t === "agri" || t === "nylon" || t === "nylons" || /^(?:s|m|l|small|medium|large)$/.test(t) || /4.?x.?4/i.test(t);
 }
 
 // ─── Summary Block Parsers ────────────────────────────────────────────────────
@@ -244,6 +265,8 @@ export function parseSummaryBlocks(body) {
     // Bare "radials" (no LC/HC qualifier) → direct radials total
     if (/^radials?$/.test(t)) { cur.radialsTotal = qty; return; }
     if (t.includes("nylon")) cur.nylonsLC = qty;
+    else if (/^(?:s|m|l|small|medium|large)$/.test(t)) cur.radialsAgri = qty;
+    else if (/4.?x.?4/i.test(t)) cur.radialsLC = qty;
     else if (t.includes("light") || /\blc\b/.test(t)) cur.radialsLC = qty;
     else if (t.includes("heavy") || t.includes("truck") || /\bhc\b/.test(t)) cur.radialsHC = qty;
     else if (t.includes("agri")) cur.radialsAgri = qty;
@@ -315,6 +338,8 @@ export function parseSummaryBlocks(body) {
         else if (t === "hc") cur.radialsHC = qty;
         else if (t === "agri") cur.radialsAgri = qty;
         else if (t === "nylon" || t === "nylons") cur.nylonsLC = qty;
+        else if (/4.?x.?4/i.test(t)) cur.radialsLC = qty;
+        else if (/^(?:s|m|l|small|medium|large)$/.test(t)) cur.radialsAgri = qty;
       } else if (lastTypeField === "tread" && cur._treadType) {
         cur.radialsAgriTreads = (cur.radialsAgriTreads ?? 0) + qty;
       }
@@ -335,7 +360,9 @@ export function parseLegacyDailySummaryBlocks(body) {
   }
   function parseType(raw) {
     const t = raw.toLowerCase();
+    if (/\b(?:s|m|l|small|medium|large)\b/.test(t)) return "radialsAgri";
     if (t.includes("nylon")) return "nylonsLC";
+    if (/4.?x.?4/i.test(t)) return "radialsLC";
     if (t.includes("light") || /\blc\b/.test(t)) return "radialsLC";
     if (t.includes("truck") || t.includes("heavy") || /\bhc\b/.test(t)) return "radialsHC";
     if (t.includes("agri")) return "radialsAgri";
@@ -385,6 +412,8 @@ export function parseLegacyCuttingSummaryBlocks(body) {
     const t = rawType.trim().toLowerCase();
     if (/tread\s*(lc|hc|agri)/i.test(rawType) || /\btreads?\b/i.test(rawType)) block.radialsAgriTreads = qty;
     else if (t.includes("nylon")) block.nylonsLC = qty;
+    else if (/^(?:s|m|l|small|medium|large)$/.test(t)) block.radialsAgri = qty;
+    else if (/4.?x.?4/i.test(t)) block.radialsLC = qty;
     else if (t.includes("light") || /\blc\b/.test(t)) block.radialsLC = qty;
     else if (t.includes("heavy") || t.includes("truck") || /\bhc\b/.test(t)) block.radialsHC = qty;
     else if (t.includes("agri")) block.radialsAgri = qty;
@@ -468,16 +497,21 @@ export function resolveUntypedCounts(records, summaryRecords = [], validationLog
     return cols.length === 1 ? cols[0] : null;
   };
 
+  // Build summary type lookup — typed columns + bare radials flag
   const summaryTypeByMachineDay = new Map();
+  const bareSummaryByMachineDay = new Set();
   for (const s of summaryRecords) {
     const key = machineDayKey(s?.date, s?.cmNumber);
     if (!key) continue;
     if (!summaryTypeByMachineDay.has(key)) summaryTypeByMachineDay.set(key, new Set());
     const bucket = summaryTypeByMachineDay.get(key);
-    if (s.radialsLC != null) bucket.add("radialsLC");
-    if (s.radialsHC != null) bucket.add("radialsHC");
-    if (s.radialsAgri != null) bucket.add("radialsAgri");
-    if (s.nylonsLC != null) bucket.add("nylonsLC");
+    if (s.totalLC != null) bucket.add("radialsLC");
+    if (s.totalHC != null) bucket.add("radialsHC");
+    if (s.totalAgri != null) bucket.add("radialsAgri");
+    // Track bare radials summaries (totalRadials set but no specific type)
+    if (s.totalRadials != null && s.totalLC == null && s.totalHC == null && s.totalAgri == null) {
+      bareSummaryByMachineDay.add(key);
+    }
   }
 
   const rowsByMachineDay = new Map();
@@ -500,7 +534,20 @@ export function resolveUntypedCounts(records, summaryRecords = [], validationLog
     let target = null;
     let source = "";
 
-    if (pos >= 0) {
+    // 1. Try daily summary for same machine first
+    const summaryTypes = key ? summaryTypeByMachineDay.get(key) : null;
+    if (summaryTypes && summaryTypes.size === 1) {
+      target = [...summaryTypes][0];
+      source = "daily summary for same machine";
+    }
+    // Bare radials summary (no LC/HC/Agri breakdown) → default to Heavy Commercial
+    if (!target && key && bareSummaryByMachineDay.has(key)) {
+      target = "radialsHC";
+      source = "bare radials daily summary for same machine (defaulted to HC)";
+    }
+
+    // 2. Try previous same-day records for same machine
+    if (!target && pos >= 0) {
       for (let p = pos - 1; p >= 0; p -= 1) {
         const prev = records[bucket[p]];
         const prevCol = typedColumnFromRecord(prev);
@@ -512,6 +559,7 @@ export function resolveUntypedCounts(records, summaryRecords = [], validationLog
       }
     }
 
+    // 3. Try following same-day records for same machine
     if (!target && pos >= 0) {
       for (let n = pos + 1; n < bucket.length; n += 1) {
         const next = records[bucket[n]];
@@ -524,14 +572,6 @@ export function resolveUntypedCounts(records, summaryRecords = [], validationLog
       }
     }
 
-    if (!target) {
-      const summaryTypes = key ? summaryTypeByMachineDay.get(key) : null;
-      if (summaryTypes && summaryTypes.size === 1) {
-        target = [...summaryTypes][0];
-        source = "daily summary for same machine";
-      }
-    }
-
     const timeStr = (r.startTime && r.finishTime) ? `${formatTime(r.startTime)}-${formatTime(r.finishTime)}` : "";
     if (target) {
       r[target] = (r[target] ?? 0) + r._untypedCount;
@@ -540,23 +580,21 @@ export function resolveUntypedCounts(records, summaryRecords = [], validationLog
         time: timeStr,
         messageType: "Hourly",
         cutter: r.cmNumber,
-        issue: `Untyped machine count (${r._untypedCount})`,
-        action: `Inferred as ${target} from ${source}`,
+        issue: r._sideWallCount != null
+          ? `Side wall only count (${r._sideWallCount} side walls => ${r._untypedCount} tyres)`
+          : `Untyped machine count (${r._untypedCount})`,
+        action: r._sideWallCount != null
+          ? `Converted side walls to tyre-equivalent count and inferred as ${target} from ${source}`
+          : `Inferred as ${target} from ${source}`,
         rawText: r.rawMessage || "",
       });
     } else {
-      validationLog.push({
-        date: dateToStr(r.date),
-        time: timeStr,
-        messageType: "Hourly",
-        cutter: r.cmNumber,
-        issue: `Untyped machine count (${r._untypedCount})`,
-        action: "Could not infer type from previous, following, or unambiguous summary data",
-        rawText: r.rawMessage || "",
-      });
+      // Mark this record so the Excel writer can highlight it in the monthly sheet
+      r._unresolvedType = true;
     }
 
     delete r._untypedCount;
     delete r._hintColumn;
+    delete r._sideWallCount;
   }
 }

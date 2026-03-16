@@ -24,12 +24,12 @@ function withSummaryPlaceholders(summaryRows) {
       bucket.set(cm, {
         date: s.date,
         cmNumber: `CM - ${cm}`,
-        radialsLC: null, radialsHC: null, radialsAgri: null,
-        radialsAgriTreads: null, nylonsLC: null, radialsTotal: null,
+        totalLC: null, totalHC: null, totalRadials: null,
+        totalAgri: null, totalAgriTreads: null,
       });
     }
     const cur = bucket.get(cm);
-    for (const k of ["radialsLC", "radialsHC", "radialsAgri", "radialsAgriTreads", "nylonsLC", "radialsTotal"]) {
+    for (const k of ["totalLC", "totalHC", "totalRadials", "totalAgri", "totalAgriTreads"]) {
       if (s[k] !== null && s[k] !== undefined) cur[k] = s[k];
     }
   }
@@ -42,8 +42,8 @@ function withSummaryPlaceholders(summaryRows) {
       out.push(existing || {
         date: d.date,
         cmNumber: `CM - ${cm}`,
-        radialsLC: null, radialsHC: null, radialsAgri: null,
-        radialsAgriTreads: null, nylonsLC: null, radialsTotal: null,
+        totalLC: null, totalHC: null, totalRadials: null,
+        totalAgri: null, totalAgriTreads: null,
       });
     }
   }
@@ -201,6 +201,8 @@ export async function downloadCuttingWorkbook(records, filename, extras = {}) {
   const { summaryRecords = [], validationLog = [] } = extras;
   const { default: ExcelJS } = await import("exceljs");
   const wb = new ExcelJS.Workbook();
+  wb.calcProperties.fullCalcOnLoad = true;
+  wb.calcProperties.forceFullCalc = true;
   const styles = baseStyles();
 
   const byMonth = groupByMonth(records);
@@ -212,7 +214,7 @@ export async function downloadCuttingWorkbook(records, filename, extras = {}) {
     const monthRecords = byMonth[key] || [];
     const monthSummary = summaryByMonth[key] || [];
 
-    const rows = cuttingSheetRows(monthRecords);
+    const { rows, unresolvedIndices } = cuttingSheetRows(monthRecords);
     let hasCuttingTotalsRow = false;
 
     if (rows.length >= 2) {
@@ -226,16 +228,16 @@ export async function downloadCuttingWorkbook(records, filename, extras = {}) {
       rows.push(["Cutting Summary", "", "", "", "", ""]);
       rows.push(["Date", "CM Number", "LC", "HC", "Radials Total", "Agri"]);
       for (const s of sorted) {
-        const radialsTotal = s.radialsTotal !== null && s.radialsTotal !== undefined
-          ? s.radialsTotal
-          : (s.radialsLC !== null || s.radialsHC !== null) ? (s.radialsLC ?? 0) + (s.radialsHC ?? 0) : "";
+        const radialsTotal = s.totalRadials !== null && s.totalRadials !== undefined
+          ? s.totalRadials
+          : (s.totalLC !== null || s.totalHC !== null) ? (s.totalLC ?? 0) + (s.totalHC ?? 0) : "";
         rows.push([
           dateToStr(s.date),
           s.cmNumber,
-          s.radialsLC ?? "",
-          s.radialsHC ?? "",
+          s.totalLC ?? "",
+          s.totalHC ?? "",
           radialsTotal,
-          s.radialsAgri ?? "",
+          s.totalAgri ?? "",
         ]);
       }
     }
@@ -291,6 +293,17 @@ export async function downloadCuttingWorkbook(records, filename, extras = {}) {
       styleBodyRows(ws, 3, ws.rowCount, styles.baseBorder);
       collapseRepeatedDates(ws, 3, ws.rowCount);
       styleFirstDateRows(ws, 3, ws.rowCount);
+    }
+
+    // Highlight unresolved-type rows in light blue pastel on the monthly sheet
+    const lightBluePastel = "FFD6EAF8";
+    for (const idx of unresolvedIndices) {
+      const excelRow = dataStartRow + idx; // dataStartRow = 3 (1-based), idx = 0-based within data
+      const row = ws.getRow(excelRow);
+      for (let c = 1; c <= 12; c += 1) {
+        const cell = row.getCell(c);
+        cell.fill = { type: "pattern", pattern: "solid", fgColor: { argb: lightBluePastel } };
+      }
     }
   }
 

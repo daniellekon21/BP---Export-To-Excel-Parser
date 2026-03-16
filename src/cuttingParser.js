@@ -99,19 +99,19 @@ export function parseCuttingMessagesNew(text) {
       if (blocks.length > 0) {
         for (const b of blocks) {
           const inferredType = b._untypedQty != null ? inferDailySummaryType(records, date, `CM - ${b.cmNum}`) : null;
-          const radialsLC = b.radialsLC ?? (inferredType === "radialsLC" ? b._untypedQty : null);
-          const radialsHC = b.radialsHC ?? (inferredType === "radialsHC" ? b._untypedQty : null);
-          const radialsAgri = b.radialsAgri ?? (inferredType === "radialsAgri" ? b._untypedQty : null);
-          const nylonsLC = b.nylonsLC ?? (inferredType === "nylonsLC" ? b._untypedQty : null);
-          const radialsTotal = b.radialsTotal ?? (
-            b._untypedQty != null && inferredType === null ? b._untypedQty : null
-          );
-          const hasAnyValue = radialsLC !== null || radialsHC !== null || radialsAgri !== null || b.radialsAgriTreads !== null || nylonsLC !== null || radialsTotal !== null;
+          const totalLC = b.radialsLC ?? (inferredType === "radialsLC" ? b._untypedQty : null);
+          const totalHC = b.radialsHC ?? (inferredType === "radialsHC" ? b._untypedQty : null);
+          const totalAgri = b.radialsAgri ?? (inferredType === "radialsAgri" ? b._untypedQty : null);
+          const totalRadials = b.radialsTotal
+            ?? ((totalLC !== null && totalHC !== null) ? ((totalLC ?? 0) + (totalHC ?? 0)) : null)
+            ?? (b._untypedQty != null && inferredType === null ? b._untypedQty : null);
+          const totalAgriTreads = b.radialsAgriTreads ?? null;
+          const hasAnyValue = totalLC !== null || totalHC !== null || totalAgri !== null || totalAgriTreads !== null || totalRadials !== null;
           if (!hasAnyValue) {
             // N/A or 0 blocks are expected — no need to log
             continue;
           }
-          summaryRecords.push({ date, series, cmNumber: `CM - ${b.cmNum}`, radialsLC, radialsHC, radialsAgri, radialsAgriTreads: b.radialsAgriTreads, nylonsLC, radialsTotal });
+          summaryRecords.push({ date, series, cmNumber: `CM - ${b.cmNum}`, totalLC, totalHC, totalRadials, totalAgri, totalAgriTreads });
         }
         continue;
       }
@@ -121,19 +121,22 @@ export function parseCuttingMessagesNew(text) {
           const cmLabel = `CM - ${b.cmNum}`;
           const inferredType = b.type ?? inferDailySummaryType(records, date, cmLabel);
           if (!inferredType) {
-            validationLog.push({ date: dateStr, time: "", messageType: "Summary", cutter: cmLabel, issue: `Ambiguous legacy daily summary type in "${b.raw}"`, action: "Summary row skipped", rawText: body });
+            summaryRecords.push({
+              date, series, cmNumber: cmLabel,
+              totalLC: null, totalHC: null, totalRadials: b.qty,
+              totalAgri: null, totalAgriTreads: null,
+            });
             continue;
           }
           summaryRecords.push({
             date,
             series,
             cmNumber: cmLabel,
-            radialsLC: inferredType === "radialsLC" ? b.qty : null,
-            radialsHC: inferredType === "radialsHC" ? b.qty : null,
-            radialsAgri: inferredType === "radialsAgri" ? b.qty : null,
-            nylonsLC: inferredType === "nylonsLC" ? b.qty : null,
-            radialsAgriTreads: null,
-            radialsTotal: null,
+            totalLC: inferredType === "radialsLC" ? b.qty : null,
+            totalHC: inferredType === "radialsHC" ? b.qty : null,
+            totalRadials: null,
+            totalAgri: inferredType === "radialsAgri" ? b.qty : null,
+            totalAgriTreads: null,
           });
         }
       }
@@ -272,7 +275,6 @@ export function parseCuttingMessages(text) {
     if (!date) continue;
 
     const series  = `${String(date.month).padStart(2, "0")}/${String(date.year).slice(2)}`;
-    const dateStr = dateToStr(date);
     const isDailySummary     = /daily summary/i.test(body);
     const isStructuredSummary = /cutting summary/i.test(body) || (!isDailySummary && /\bsummary\b/i.test(body));
 
@@ -281,19 +283,19 @@ export function parseCuttingMessages(text) {
       if (blocks.length === 0) blocks = parseLegacyCuttingSummaryBlocks(body);
       for (const b of blocks) {
         const inferredType = b._untypedQty != null ? inferDailySummaryType(records, date, `CM - ${b.cmNum}`) : null;
-        const radialsLC = b.radialsLC ?? (inferredType === "radialsLC" ? b._untypedQty : null);
-        const radialsHC = b.radialsHC ?? (inferredType === "radialsHC" ? b._untypedQty : null);
-        const radialsAgri = b.radialsAgri ?? (inferredType === "radialsAgri" ? b._untypedQty : null);
-        const nylonsLC = b.nylonsLC ?? (inferredType === "nylonsLC" ? b._untypedQty : null);
-        const radialsTotal = b.radialsTotal ?? (
-          b._untypedQty != null && inferredType === null ? b._untypedQty : null
-        );
-        const hasAnyValue = radialsLC !== null || radialsHC !== null || radialsAgri !== null || b.radialsAgriTreads !== null || nylonsLC !== null || radialsTotal !== null;
+        const totalLC = b.radialsLC ?? (inferredType === "radialsLC" ? b._untypedQty : null);
+        const totalHC = b.radialsHC ?? (inferredType === "radialsHC" ? b._untypedQty : null);
+        const totalAgri = b.radialsAgri ?? (inferredType === "radialsAgri" ? b._untypedQty : null);
+        const totalRadials = b.radialsTotal
+          ?? ((totalLC !== null && totalHC !== null) ? ((totalLC ?? 0) + (totalHC ?? 0)) : null)
+          ?? (b._untypedQty != null && inferredType === null ? b._untypedQty : null);
+        const totalAgriTreads = b.radialsAgriTreads ?? null;
+        const hasAnyValue = totalLC !== null || totalHC !== null || totalAgri !== null || totalAgriTreads !== null || totalRadials !== null;
         if (!hasAnyValue && !b._hasMarker) {
           // N/A or 0 blocks are expected — no need to log
           continue;
         }
-        summaryRecords.push({ date, series, cmNumber: `CM - ${b.cmNum}`, radialsLC, radialsHC, radialsAgri, radialsAgriTreads: b.radialsAgriTreads, nylonsLC, radialsTotal });
+        summaryRecords.push({ date, series, cmNumber: `CM - ${b.cmNum}`, totalLC, totalHC, totalRadials, totalAgri, totalAgriTreads });
       }
       continue;
     }
@@ -303,19 +305,23 @@ export function parseCuttingMessages(text) {
         const cmLabel = `CM - ${b.cmNum}`;
         const inferredType = b.type ?? inferDailySummaryType(records, date, cmLabel);
         if (!inferredType) {
-          validationLog.push({ date: dateStr, time: "", messageType: "Summary", cutter: cmLabel, issue: `Ambiguous legacy daily summary type in "${b.raw}"`, action: "Summary row skipped", rawText: body });
+          // Still record that a summary exists for this machine+day (bare radials)
+          summaryRecords.push({
+            date, series, cmNumber: cmLabel,
+            totalLC: null, totalHC: null, totalRadials: b.qty,
+            totalAgri: null, totalAgriTreads: null,
+          });
           continue;
         }
         summaryRecords.push({
           date,
           series,
           cmNumber: cmLabel,
-          radialsLC: inferredType === "radialsLC" ? b.qty : null,
-          radialsHC: inferredType === "radialsHC" ? b.qty : null,
-          radialsAgri: inferredType === "radialsAgri" ? b.qty : null,
-          nylonsLC: inferredType === "nylonsLC" ? b.qty : null,
-          radialsAgriTreads: null,
-          radialsTotal: null,
+          totalLC: inferredType === "radialsLC" ? b.qty : null,
+          totalHC: inferredType === "radialsHC" ? b.qty : null,
+          totalRadials: null,
+          totalAgri: inferredType === "radialsAgri" ? b.qty : null,
+          totalAgriTreads: null,
         });
       }
       continue;
@@ -344,7 +350,6 @@ export function parseCuttingMessages(text) {
       const seenCMs = new Set();
       const machineRows = [];
       let hasIntervalProduction = false;
-      let intervalHintColumn = null;
       let m;
       let rowOrderInText = 0;
       const intervalTimeLabel = (startTime && finishTime)
@@ -413,10 +418,6 @@ export function parseCuttingMessages(text) {
           continue;
         }
         if (classifyLine(rawLine) !== "machine_line") continue;
-        if (!intervalHintColumn) {
-          const hinted = mapTyreType(normalized);
-          if (hinted && hinted !== "unknown_type" && hinted !== "radialsAgriTreads") intervalHintColumn = hinted;
-        }
         const parsed = parseMachineLine(normalized);
         if (parsed.length === 0) continue;
         pendingRecords.push(parsed);
@@ -425,24 +426,35 @@ export function parseCuttingMessages(text) {
         }
       }
 
-      // Infer type for bare-count lines from sibling CMs in the same interval
-      const flatPending = pendingRecords.flat();
-      const knownColumns = flatPending.filter(p => p.column !== null && p.column !== "unknown_type" && p.column !== "").map(p => p.column);
-      const inferredColumn = [...new Set(knownColumns)].length === 1 ? [...new Set(knownColumns)][0] : null;
+      // Build per-CM type inference (same machine only — no cross-machine inference)
+      const columnsByCm = new Map();
+      for (const parsedLine of pendingRecords) {
+        const cm = parsedLine[0].cmNum;
+        for (const p of parsedLine) {
+          if (p.column && p.column !== "unknown_type" && p.column !== "") {
+            if (!columnsByCm.has(cm)) columnsByCm.set(cm, new Set());
+            columnsByCm.get(cm).add(p.column);
+          }
+        }
+      }
 
       for (const parsedLine of pendingRecords) {
-        const row = createRow(parsedLine[0].cmNum);
+        const cm = parsedLine[0].cmNum;
+        const row = createRow(cm);
+        const cmCols = columnsByCm.get(cm);
+        const cmInferred = cmCols && cmCols.size === 1 ? [...cmCols][0] : null;
         for (const p of parsedLine) {
           if (p.count === null && !p.isStatus) continue;
           let col = p.column;
-          if ((col === null || col === "unknown_type") && p.count !== null && inferredColumn) col = inferredColumn;
-          if ((col === null || col === "unknown_type") && p.count !== null && intervalHintColumn) col = intervalHintColumn;
+          if ((col === null || col === "unknown_type") && p.count !== null && cmInferred) col = cmInferred;
           if (col && col !== "unknown_type" && col !== "" && p.count !== null) {
             row[col] = (row[col] ?? 0) + p.count;
             if (p.count > 0) hasIntervalProduction = true;
           } else if (p.count !== null) {
             row._untypedCount = (row._untypedCount ?? 0) + p.count;
-            if (!row._hintColumn && intervalHintColumn) row._hintColumn = intervalHintColumn;
+            if (p.isSideWall) {
+              row._sideWallCount = (row._sideWallCount ?? 0) + (p.sideWallCount ?? 0);
+            }
             if (p.count > 0) hasIntervalProduction = true;
           }
         }
