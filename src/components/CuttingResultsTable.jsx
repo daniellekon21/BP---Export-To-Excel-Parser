@@ -17,7 +17,7 @@ export default function CuttingResultsTable({ records }) {
     <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 12 }}>
       <thead>
         <tr style={{ background: "#F9FAFB" }}>
-          {["Date", "Machine", "Time", "LC", "HC", "Agri", "Tread LC", "Tread HC", "Tread Agri"].map((h) => (
+          {["Date", "Machine", "Time", "Radials LC", "Radials HC", "Radials Agri", "Radials Agri Treads", "Nylons LC"].map((h) => (
             <TH key={h}>{h}</TH>
           ))}
         </tr>
@@ -28,12 +28,11 @@ export default function CuttingResultsTable({ records }) {
             <TD>{dateToStr(r.date)}</TD>
             <TD>{r.cmNumber}</TD>
             <TD>{r.startTime && r.finishTime ? `${formatTime(r.startTime)}-${formatTime(r.finishTime)}` : null}</TD>
-            <TD bold>{r.light_commercial}</TD>
-            <TD bold>{r.heavy_commercial_t}</TD>
-            <TD bold>{r.agricultural_t}</TD>
-            <TD>{r.tread_lc}</TD>
-            <TD>{r.tread_hc}</TD>
-            <TD>{r.tread_agri}</TD>
+            <TD bold>{r.radialsLC}</TD>
+            <TD bold>{r.radialsHC}</TD>
+            <TD bold>{r.radialsAgri}</TD>
+            <TD>{r.radialsAgriTreads}</TD>
+            <TD>{r.nylonsLC}</TD>
           </tr>
         ))}
       </tbody>

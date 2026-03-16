@@ -15,6 +15,7 @@ import {
   mapTyreTypeNew,
   mapTreadTypeNew,
   parseMachineLine,
+  parseStandaloneTreadLine,
   makeMachineRow,
   isValidNewType,
   parseSummaryBlocks,
@@ -29,9 +30,27 @@ export {
   classifyLine,
   mapTyreType,
   parseMachineLine,
+  parseStandaloneTreadLine,
   makeMachineRow,
 } from "./cutting/cuttingUtils.js";
 export { flushCutterBlock, mapTyreTypeNew, mapTreadTypeNew } from "./cutting/cuttingUtils.js";
+
+function cmSortNumber(row) {
+  const m = String(row?.cmNumber ?? "").match(/(\d+)/);
+  if (!m) return Number.MAX_SAFE_INTEGER;
+  const n = parseInt(m[1], 10);
+  return Number.isNaN(n) ? Number.MAX_SAFE_INTEGER : n;
+}
+
+function sortRowsByCm(rows) {
+  rows.sort((a, b) => {
+    const cmCmp = cmSortNumber(a) - cmSortNumber(b);
+    if (cmCmp !== 0) return cmCmp;
+    const ai = Number.isInteger(a?._rowOrderInText) ? a._rowOrderInText : 0;
+    const bi = Number.isInteger(b?._rowOrderInText) ? b._rowOrderInText : 0;
+    return ai - bi;
+  });
+}
 
 // ─── New-Format Parser ────────────────────────────────────────────────────────
 //
@@ -49,6 +68,12 @@ export function parseCuttingMessagesNew(text) {
   const records        = [];
   const summaryRecords = [];
   const validationLog  = [];
+  let parseOrder = 0;
+
+  function pushRecord(row) {
+    row._parseOrder = parseOrder++;
+    records.push(row);
+  }
 
   for (const msg of messages) {
     const body = msg.body;
@@ -73,12 +98,20 @@ export function parseCuttingMessagesNew(text) {
 
       if (blocks.length > 0) {
         for (const b of blocks) {
-          const hasAnyValue = b.lc !== null || b.hc !== null || b.agri !== null || b.tread_lc !== null || b.tread_hc !== null || b.tread_agri !== null || b.radials_total !== null;
+          const inferredType = b._untypedQty != null ? inferDailySummaryType(records, date, `CM - ${b.cmNum}`) : null;
+          const radialsLC = b.radialsLC ?? (inferredType === "radialsLC" ? b._untypedQty : null);
+          const radialsHC = b.radialsHC ?? (inferredType === "radialsHC" ? b._untypedQty : null);
+          const radialsAgri = b.radialsAgri ?? (inferredType === "radialsAgri" ? b._untypedQty : null);
+          const nylonsLC = b.nylonsLC ?? (inferredType === "nylonsLC" ? b._untypedQty : null);
+          const radialsTotal = b.radialsTotal ?? (
+            b._untypedQty != null && inferredType === null ? b._untypedQty : null
+          );
+          const hasAnyValue = radialsLC !== null || radialsHC !== null || radialsAgri !== null || b.radialsAgriTreads !== null || nylonsLC !== null || radialsTotal !== null;
           if (!hasAnyValue) {
-            validationLog.push({ date: dateStr, time: "", messageType: "Summary", cutter: `CM - ${b.cmNum}`, issue: "Summary block has no parseable tyre/tread values", action: "Summary row skipped" });
+            // N/A or 0 blocks are expected — no need to log
             continue;
           }
-          summaryRecords.push({ date, series, cmNumber: `CM - ${b.cmNum}`, lc: b.lc, hc: b.hc, agri: b.agri, tread_lc: b.tread_lc, tread_hc: b.tread_hc, tread_agri: b.tread_agri, radials_total: b.radials_total });
+          summaryRecords.push({ date, series, cmNumber: `CM - ${b.cmNum}`, radialsLC, radialsHC, radialsAgri, radialsAgriTreads: b.radialsAgriTreads, nylonsLC, radialsTotal });
         }
         continue;
       }
@@ -88,10 +121,20 @@ export function parseCuttingMessagesNew(text) {
           const cmLabel = `CM - ${b.cmNum}`;
           const inferredType = b.type ?? inferDailySummaryType(records, date, cmLabel);
           if (!inferredType) {
-            validationLog.push({ date: dateStr, time: "", messageType: "Summary", cutter: cmLabel, issue: `Ambiguous legacy daily summary type in "${b.raw}"`, action: "Summary row skipped" });
+            validationLog.push({ date: dateStr, time: "", messageType: "Summary", cutter: cmLabel, issue: `Ambiguous legacy daily summary type in "${b.raw}"`, action: "Summary row skipped", rawText: body });
             continue;
           }
-          summaryRecords.push({ date, series, cmNumber: cmLabel, lc: inferredType === "lc" ? b.qty : null, hc: inferredType === "hc" ? b.qty : null, agri: inferredType === "agri" ? b.qty : null, tread_lc: null, tread_hc: null, tread_agri: null, radials_total: null });
+          summaryRecords.push({
+            date,
+            series,
+            cmNumber: cmLabel,
+            radialsLC: inferredType === "radialsLC" ? b.qty : null,
+            radialsHC: inferredType === "radialsHC" ? b.qty : null,
+            radialsAgri: inferredType === "radialsAgri" ? b.qty : null,
+            nylonsLC: inferredType === "nylonsLC" ? b.qty : null,
+            radialsAgriTreads: null,
+            radialsTotal: null,
+          });
         }
       }
       continue;
@@ -105,43 +148,45 @@ export function parseCuttingMessagesNew(text) {
 
     const seenCutters     = new Set();
     const producedCutters = new Set();
+    const messageRows     = [];
     let currentBlock = null;
     let lastQtyField = null;
-    let isDuplicate  = false;
+    let rowOrderInText = 0;
 
     function flushBlock() {
-      if (!currentBlock || isDuplicate) return;
+      if (!currentBlock) return;
       const { cmNum, operator, assistant, tyreType, tyreCount, treadType, treadCount } = currentBlock;
       const opStr = [operator, assistant].filter(Boolean).join(" / ");
 
       if (tyreType !== null && !isValidNewType(tyreType)) {
-        validationLog.push({ date: dateStr, time: timeStr, messageType: "Hourly", cutter: `CM - ${cmNum}`, issue: `Invalid tyre type "${tyreType}"`, action: "Block skipped — only LC, HC, Agri are valid" });
+        validationLog.push({ date: dateStr, time: timeStr, messageType: "Hourly", cutter: `CM - ${cmNum}`, issue: `Invalid tyre type "${tyreType}"`, action: "Block skipped — only LC, HC, Agri are valid", rawText: body });
         return;
       }
       if (treadType !== null && !isValidNewType(treadType)) {
-        validationLog.push({ date: dateStr, time: timeStr, messageType: "Hourly", cutter: `CM - ${cmNum}`, issue: `Invalid tread type "${treadType}"`, action: "Block skipped — only LC, HC, Agri are valid" });
+        validationLog.push({ date: dateStr, time: timeStr, messageType: "Hourly", cutter: `CM - ${cmNum}`, issue: `Invalid tread type "${treadType}"`, action: "Block skipped — only LC, HC, Agri are valid", rawText: body });
         return;
       }
       if (tyreType === null) return;
       if (tyreCount === null) {
-        validationLog.push({ date: dateStr, time: timeStr, messageType: "Hourly", cutter: `CM - ${cmNum}`, issue: "Tyre type present but quantity missing", action: "Block skipped" });
+        validationLog.push({ date: dateStr, time: timeStr, messageType: "Hourly", cutter: `CM - ${cmNum}`, issue: "Tyre type present but quantity missing", action: "Block skipped", rawText: body });
         return;
       }
 
       const row = makeMachineRow(date, `CM - ${cmNum}`, series, startTime, finishTime, opStr, body);
       const tyreCol = mapTyreTypeNew(tyreType);
-      if (tyreCol !== "unknown_type") row[tyreCol] = tyreCount;
+      if (tyreCol !== "unknown_type") row[tyreCol] = (row[tyreCol] ?? 0) + tyreCount;
 
       if (treadType === null) {
-        validationLog.push({ date: dateStr, time: timeStr, messageType: "Hourly", cutter: `CM - ${cmNum}`, issue: "Tread section missing", action: "Partial parse — tyre data written, tread omitted" });
+        validationLog.push({ date: dateStr, time: timeStr, messageType: "Hourly", cutter: `CM - ${cmNum}`, issue: "Tread section missing", action: "Partial parse — tyre data written, tread omitted", rawText: body });
       } else if (treadCount === null) {
-        validationLog.push({ date: dateStr, time: timeStr, messageType: "Hourly", cutter: `CM - ${cmNum}`, issue: "Tread type present but quantity missing", action: "Tread omitted" });
+        validationLog.push({ date: dateStr, time: timeStr, messageType: "Hourly", cutter: `CM - ${cmNum}`, issue: "Tread type present but quantity missing", action: "Tread omitted", rawText: body });
       } else {
         const treadCol = mapTreadTypeNew(treadType);
-        if (treadCol !== "unknown_type") row[treadCol] = treadCount;
+        if (treadCol !== "unknown_type") row[treadCol] = (row[treadCol] ?? 0) + treadCount;
       }
 
-      records.push(row);
+      row._rowOrderInText = rowOrderInText++;
+      messageRows.push(row);
       producedCutters.add(cmNum);
     }
 
@@ -153,18 +198,16 @@ export function parseCuttingMessagesNew(text) {
       if (cutterMatch) {
         flushBlock();
         const cmNum = parseInt(cutterMatch[1], 10);
-        isDuplicate = seenCutters.has(cmNum);
-        if (isDuplicate) {
-          validationLog.push({ date: dateStr, time: timeStr, messageType: "Hourly", cutter: `CM - ${cmNum}`, issue: `Duplicate cutter CM - ${cmNum} in same message`, action: "Kept first occurrence, ignored later duplicate" });
-        } else {
-          seenCutters.add(cmNum);
+        if (seenCutters.has(cmNum)) {
+          validationLog.push({ date: dateStr, time: timeStr, messageType: "Hourly", cutter: `CM - ${cmNum}`, issue: `Duplicate cutter CM - ${cmNum} in same message`, action: "Kept all occurrences", rawText: body });
         }
+        seenCutters.add(cmNum);
         currentBlock = { cmNum, operator: "", assistant: "", tyreType: null, tyreCount: null, treadType: null, treadCount: null };
         lastQtyField = null;
         continue;
       }
 
-      if (!currentBlock || isDuplicate) continue;
+      if (!currentBlock) continue;
 
       const m_op   = line.match(/^operator\s*:\s*(.*)/i);
       const m_ast  = line.match(/^assistant\s*:\s*(.*)/i);
@@ -189,10 +232,14 @@ export function parseCuttingMessagesNew(text) {
         if (!producedCutters.has(n)) {
           const p = makeMachineRow(date, `CM - ${n}`, series, startTime, finishTime, "", body);
           p._syntheticPlaceholder = true;
-          records.push(p);
+          p._rowOrderInText = rowOrderInText++;
+          messageRows.push(p);
         }
       }
     }
+
+    sortRowsByCm(messageRows);
+    for (const row of messageRows) pushRecord(row);
   }
 
   return { records, summaryRecords, validationLog };
@@ -210,6 +257,12 @@ export function parseCuttingMessages(text) {
   const records = [];
   const summaryRecords = [];
   const validationLog = [];
+  let parseOrder = 0;
+
+  function pushRecord(row) {
+    row._parseOrder = parseOrder++;
+    records.push(row);
+  }
 
   for (const msg of messages) {
     const body = msg.body;
@@ -227,12 +280,20 @@ export function parseCuttingMessages(text) {
       let blocks = parseSummaryBlocks(body);
       if (blocks.length === 0) blocks = parseLegacyCuttingSummaryBlocks(body);
       for (const b of blocks) {
-        const hasAnyValue = b.lc !== null || b.hc !== null || b.agri !== null || b.tread_lc !== null || b.tread_hc !== null || b.tread_agri !== null || b.radials_total !== null;
+        const inferredType = b._untypedQty != null ? inferDailySummaryType(records, date, `CM - ${b.cmNum}`) : null;
+        const radialsLC = b.radialsLC ?? (inferredType === "radialsLC" ? b._untypedQty : null);
+        const radialsHC = b.radialsHC ?? (inferredType === "radialsHC" ? b._untypedQty : null);
+        const radialsAgri = b.radialsAgri ?? (inferredType === "radialsAgri" ? b._untypedQty : null);
+        const nylonsLC = b.nylonsLC ?? (inferredType === "nylonsLC" ? b._untypedQty : null);
+        const radialsTotal = b.radialsTotal ?? (
+          b._untypedQty != null && inferredType === null ? b._untypedQty : null
+        );
+        const hasAnyValue = radialsLC !== null || radialsHC !== null || radialsAgri !== null || b.radialsAgriTreads !== null || nylonsLC !== null || radialsTotal !== null;
         if (!hasAnyValue && !b._hasMarker) {
-          validationLog.push({ date: dateStr, time: "", messageType: "Summary", cutter: `CM - ${b.cmNum}`, issue: "Summary block has no parseable tyre/tread values", action: "Summary row skipped" });
+          // N/A or 0 blocks are expected — no need to log
           continue;
         }
-        summaryRecords.push({ date, series, cmNumber: `CM - ${b.cmNum}`, lc: b.lc, hc: b.hc, agri: b.agri, tread_lc: b.tread_lc, tread_hc: b.tread_hc, tread_agri: b.tread_agri, radials_total: b.radials_total });
+        summaryRecords.push({ date, series, cmNumber: `CM - ${b.cmNum}`, radialsLC, radialsHC, radialsAgri, radialsAgriTreads: b.radialsAgriTreads, nylonsLC, radialsTotal });
       }
       continue;
     }
@@ -242,10 +303,20 @@ export function parseCuttingMessages(text) {
         const cmLabel = `CM - ${b.cmNum}`;
         const inferredType = b.type ?? inferDailySummaryType(records, date, cmLabel);
         if (!inferredType) {
-          validationLog.push({ date: dateStr, time: "", messageType: "Summary", cutter: cmLabel, issue: `Ambiguous legacy daily summary type in "${b.raw}"`, action: "Summary row skipped" });
+          validationLog.push({ date: dateStr, time: "", messageType: "Summary", cutter: cmLabel, issue: `Ambiguous legacy daily summary type in "${b.raw}"`, action: "Summary row skipped", rawText: body });
           continue;
         }
-        summaryRecords.push({ date, series, cmNumber: cmLabel, lc: inferredType === "lc" ? b.qty : null, hc: inferredType === "hc" ? b.qty : null, agri: inferredType === "agri" ? b.qty : null, tread_lc: null, tread_hc: null, tread_agri: null, radials_total: null });
+        summaryRecords.push({
+          date,
+          series,
+          cmNumber: cmLabel,
+          radialsLC: inferredType === "radialsLC" ? b.qty : null,
+          radialsHC: inferredType === "radialsHC" ? b.qty : null,
+          radialsAgri: inferredType === "radialsAgri" ? b.qty : null,
+          nylonsLC: inferredType === "nylonsLC" ? b.qty : null,
+          radialsAgriTreads: null,
+          radialsTotal: null,
+        });
       }
       continue;
     }
@@ -270,15 +341,26 @@ export function parseCuttingMessages(text) {
       if (interval.lines.length === 0) continue;
 
       const { startTime, finishTime } = interval;
-      const seenCMs    = new Set();
-      const machineRows = new Map();
+      const seenCMs = new Set();
+      const machineRows = [];
       let hasIntervalProduction = false;
       let intervalHintColumn = null;
       let m;
+      let rowOrderInText = 0;
+      const intervalTimeLabel = (startTime && finishTime)
+        ? `${formatTime(startTime)}-${formatTime(finishTime)}`
+        : "";
+      const intervalLines = interval.lines.map((l) => l.trim()).filter(Boolean);
+      const intervalRawMessage = [dateToStr(date), intervalTimeLabel, ...intervalLines]
+        .filter(Boolean)
+        .join("\n");
 
-      const getRow = (cmNum) => {
-        if (!machineRows.has(cmNum)) machineRows.set(cmNum, makeMachineRow(date, `CM - ${cmNum}`, series, startTime, finishTime, "", body));
-        return machineRows.get(cmNum);
+      const createRow = (cmNum) => {
+        const row = makeMachineRow(date, `CM - ${cmNum}`, series, startTime, finishTime, "", intervalRawMessage);
+        row._rowOrderInText = rowOrderInText++;
+        machineRows.push(row);
+        seenCMs.add(cmNum);
+        return row;
       };
 
       const intervalBody = interval.lines.join("\n");
@@ -288,12 +370,10 @@ export function parseCuttingMessages(text) {
       const fmtD = /CM\s*(\d)\s*-\s*\(HC\)\s*=?\s*(\d+)[\s\S]*?\(LC\)\s*=?\s*(\d+)/gi;
       while ((m = fmtD.exec(intervalBody)) !== null) {
         const cmNum = parseInt(m[1], 10);
-        if (seenCMs.has(cmNum)) continue;
-        seenCMs.add(cmNum);
         const hc = parseInt(m[2], 10), lc = parseInt(m[3], 10);
-        const row = getRow(cmNum);
-        if (!isNaN(hc) && hc > 0) row.heavy_commercial_t = hc;
-        if (!isNaN(lc) && lc > 0) row.tread_lc = lc;
+        const row = createRow(cmNum);
+        if (!isNaN(hc) && hc > 0) row.radialsHC = hc;
+        if (!isNaN(lc) && lc > 0) row.radialsLC = lc;
         if ((!isNaN(hc) && hc > 0) || (!isNaN(lc) && lc > 0)) hasIntervalProduction = true;
       }
 
@@ -301,77 +381,91 @@ export function parseCuttingMessages(text) {
       const fmtHC = /CM\s*(\d)\s*-\s*\(HC\)\s*=?\s*(\d+)/gi;
       while ((m = fmtHC.exec(intervalBody)) !== null) {
         const cmNum = parseInt(m[1], 10);
-        if (seenCMs.has(cmNum)) continue;
-        seenCMs.add(cmNum);
         const count = parseInt(m[2], 10);
-        const row = getRow(cmNum);
-        if (!isNaN(count)) row.heavy_commercial_t = count;
+        const row = createRow(cmNum);
+        if (!isNaN(count)) row.radialsHC = count;
         if (!isNaN(count) && count > 0) hasIntervalProduction = true;
       }
 
-      // Single-(LC) lines → RADIALS Light Commercial T
+      // Single-(LC) lines → RADIALS Light Commercial
       const fmtLC = /CM\s*(\d)\s*-\s*\(LC\)\s*=?\s*(\d+)/gi;
       while ((m = fmtLC.exec(intervalBody)) !== null) {
         const cmNum = parseInt(m[1], 10);
-        if (seenCMs.has(cmNum)) continue;
-        seenCMs.add(cmNum);
         const count = parseInt(m[2], 10);
-        const row = getRow(cmNum);
-        if (!isNaN(count)) row.tread_lc = count;
+        const row = createRow(cmNum);
+        if (!isNaN(count)) row.radialsLC = count;
         if (!isNaN(count) && count > 0) hasIntervalProduction = true;
       }
 
       // Phase 2: line-by-line for all other formats
       const pendingRecords = [];
+      let lastMachineForStandaloneTreads = null;
       for (const rawLine of interval.lines) {
-        if (classifyLine(rawLine) !== "machine_line") continue;
         const normalized = normalizeCuttingLine(rawLine);
+        const standaloneTreadCount = parseStandaloneTreadLine(normalized);
+        if (standaloneTreadCount !== null && lastMachineForStandaloneTreads !== null) {
+          const lastParsedLine = pendingRecords[pendingRecords.length - 1];
+          if (lastParsedLine && lastParsedLine[0]?.cmNum === lastMachineForStandaloneTreads) {
+            lastParsedLine.push({ cmNum: lastMachineForStandaloneTreads, column: "radialsAgriTreads", count: standaloneTreadCount });
+          } else {
+            pendingRecords.push([{ cmNum: lastMachineForStandaloneTreads, column: "radialsAgriTreads", count: standaloneTreadCount }]);
+          }
+          continue;
+        }
+        if (classifyLine(rawLine) !== "machine_line") continue;
         if (!intervalHintColumn) {
           const hinted = mapTyreType(normalized);
-          if (hinted && hinted !== "unknown_type" && hinted !== "treads") intervalHintColumn = hinted;
+          if (hinted && hinted !== "unknown_type" && hinted !== "radialsAgriTreads") intervalHintColumn = hinted;
         }
         const parsed = parseMachineLine(normalized);
         if (parsed.length === 0) continue;
-        const cmNum = parsed[0].cmNum;
-        if (seenCMs.has(cmNum)) continue;
-        seenCMs.add(cmNum);
-        for (const p of parsed) pendingRecords.push(p);
+        pendingRecords.push(parsed);
+        if (parsed.some((p) => p.count !== null && p.column !== "")) {
+          lastMachineForStandaloneTreads = parsed[0].cmNum;
+        }
       }
 
       // Infer type for bare-count lines from sibling CMs in the same interval
-      const knownColumns = pendingRecords.filter(p => p.column !== null && p.column !== "unknown_type" && p.column !== "").map(p => p.column);
+      const flatPending = pendingRecords.flat();
+      const knownColumns = flatPending.filter(p => p.column !== null && p.column !== "unknown_type" && p.column !== "").map(p => p.column);
       const inferredColumn = [...new Set(knownColumns)].length === 1 ? [...new Set(knownColumns)][0] : null;
 
-      for (const p of pendingRecords) {
-        if (p.count === null && !p.isStatus) continue;
-        let col = p.column;
-        if ((col === null || col === "unknown_type") && p.count !== null && inferredColumn) col = inferredColumn;
-        if ((col === null || col === "unknown_type") && p.count !== null && intervalHintColumn) col = intervalHintColumn;
-        const row = getRow(p.cmNum);
-        if (col && col !== "unknown_type" && col !== "" && p.count !== null) {
-          row[col] = p.count;
-          if (p.count > 0) hasIntervalProduction = true;
-        } else if (p.count !== null) {
-          row._untypedCount = (row._untypedCount ?? 0) + p.count;
-          if (!row._hintColumn && intervalHintColumn) row._hintColumn = intervalHintColumn;
-          if (p.count > 0) hasIntervalProduction = true;
+      for (const parsedLine of pendingRecords) {
+        const row = createRow(parsedLine[0].cmNum);
+        for (const p of parsedLine) {
+          if (p.count === null && !p.isStatus) continue;
+          let col = p.column;
+          if ((col === null || col === "unknown_type") && p.count !== null && inferredColumn) col = inferredColumn;
+          if ((col === null || col === "unknown_type") && p.count !== null && intervalHintColumn) col = intervalHintColumn;
+          if (col && col !== "unknown_type" && col !== "" && p.count !== null) {
+            row[col] = (row[col] ?? 0) + p.count;
+            if (p.count > 0) hasIntervalProduction = true;
+          } else if (p.count !== null) {
+            row._untypedCount = (row._untypedCount ?? 0) + p.count;
+            if (!row._hintColumn && intervalHintColumn) row._hintColumn = intervalHintColumn;
+            if (p.count > 0) hasIntervalProduction = true;
+          }
         }
       }
 
       if (!hasIntervalProduction) continue;
 
-      for (const row of machineRows.values()) records.push(row);
+      const intervalRows = [...machineRows];
 
       for (const n of [1, 2, 3]) {
-        if (!machineRows.has(n)) {
-          const p = makeMachineRow(date, `CM - ${n}`, series, startTime, finishTime, "", body);
+        if (!seenCMs.has(n)) {
+          const p = makeMachineRow(date, `CM - ${n}`, series, startTime, finishTime, "", intervalRawMessage);
           p._syntheticPlaceholder = true;
-          records.push(p);
+          p._rowOrderInText = rowOrderInText++;
+          intervalRows.push(p);
         }
       }
+
+      sortRowsByCm(intervalRows);
+      for (const row of intervalRows) pushRecord(row);
     }
   }
 
-  resolveUntypedCounts(records);
+  resolveUntypedCounts(records, summaryRecords, validationLog);
   return { records, summaryRecords, validationLog };
 }

@@ -24,12 +24,12 @@ function withSummaryPlaceholders(summaryRows) {
       bucket.set(cm, {
         date: s.date,
         cmNumber: `CM - ${cm}`,
-        lc: null, hc: null, agri: null,
-        tread_lc: null, tread_hc: null, tread_agri: null, radials_total: null,
+        radialsLC: null, radialsHC: null, radialsAgri: null,
+        radialsAgriTreads: null, nylonsLC: null, radialsTotal: null,
       });
     }
     const cur = bucket.get(cm);
-    for (const k of ["lc", "hc", "agri", "tread_lc", "tread_hc", "tread_agri", "radials_total"]) {
+    for (const k of ["radialsLC", "radialsHC", "radialsAgri", "radialsAgriTreads", "nylonsLC", "radialsTotal"]) {
       if (s[k] !== null && s[k] !== undefined) cur[k] = s[k];
     }
   }
@@ -42,8 +42,8 @@ function withSummaryPlaceholders(summaryRows) {
       out.push(existing || {
         date: d.date,
         cmNumber: `CM - ${cm}`,
-        lc: null, hc: null, agri: null,
-        tread_lc: null, tread_hc: null, tread_agri: null, radials_total: null,
+        radialsLC: null, radialsHC: null, radialsAgri: null,
+        radialsAgriTreads: null, nylonsLC: null, radialsTotal: null,
       });
     }
   }
@@ -56,14 +56,14 @@ function styleCuttingHeaderRows(ws, styles) {
   const cuttingHeaderYellow = "FFF7D447";
 
   const colorForColumn = (col) => {
-    if (col >= 11 && col <= 12) return cuttingHeaderOrange;
-    if (col >= 13 && col <= 15) return cuttingHeaderYellow;
+    if (col >= 7 && col <= 10) return cuttingHeaderOrange;
+    if (col === 11) return cuttingHeaderYellow;
     return cuttingHeaderGray;
   };
 
   for (const rowIndex of [1, 2]) {
     const row = ws.getRow(rowIndex);
-    for (let c = 1; c <= 17; c += 1) {
+    for (let c = 1; c <= 12; c += 1) {
       const cell = row.getCell(c);
       cell.font = { ...(cell.font || {}), bold: true, color: { argb: styles.textDark } };
       cell.fill = { type: "pattern", pattern: "solid", fgColor: { argb: colorForColumn(c) } };
@@ -80,10 +80,8 @@ function styleCuttingHeaderRows(ws, styles) {
   const groups = [
     { start: 1, end: 6 },
     { start: 7, end: 10 },
-    { start: 11, end: 12 },
-    { start: 13, end: 15 },
-    { start: 16, end: 16 },
-    { start: 17, end: 17 },
+    { start: 11, end: 11 },
+    { start: 12, end: 12 },
   ];
   const topRow = ws.getRow(1);
   const bottomRow = ws.getRow(2);
@@ -103,7 +101,7 @@ function styleCuttingHeaderRows(ws, styles) {
 
 function styleTotalsRow(row, styles) {
   const cuttingHeaderGray = "FFC2C8D6";
-  for (let c = 1; c <= 17; c += 1) {
+  for (let c = 1; c <= 12; c += 1) {
     const cell = row.getCell(c);
     cell.font = { ...(cell.font || {}), bold: true, color: { argb: styles.textDark } };
     cell.fill = { type: "pattern", pattern: "solid", fgColor: { argb: cuttingHeaderGray } };
@@ -111,13 +109,13 @@ function styleTotalsRow(row, styles) {
     cell.alignment = { vertical: "middle", horizontal: "center", wrapText: true };
   }
 
-  for (let c = 1; c <= 17; c += 1) {
+  for (let c = 1; c <= 12; c += 1) {
     const cell = row.getCell(c);
     const border = { ...(cell.border || {}) };
     border.top = styles.mediumBlack;
     border.bottom = styles.mediumBlack;
     if (c === 1) border.left = styles.mediumBlack;
-    if (c === 17) border.right = styles.mediumBlack;
+    if (c === 12) border.right = styles.mediumBlack;
     cell.border = border;
   }
 }
@@ -218,7 +216,7 @@ export async function downloadCuttingWorkbook(records, filename, extras = {}) {
     let hasCuttingTotalsRow = false;
 
     if (rows.length >= 2) {
-      rows.push(["TOTALS", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", ""]);
+      rows.push(["TOTALS", "", "", "", "", "", "", "", "", "", "", ""]);
       hasCuttingTotalsRow = true;
     }
 
@@ -228,16 +226,16 @@ export async function downloadCuttingWorkbook(records, filename, extras = {}) {
       rows.push(["Cutting Summary", "", "", "", "", ""]);
       rows.push(["Date", "CM Number", "LC", "HC", "Radials Total", "Agri"]);
       for (const s of sorted) {
-        const radialsTotal = s.radials_total !== null && s.radials_total !== undefined
-          ? s.radials_total
-          : (s.lc !== null || s.hc !== null) ? (s.lc ?? 0) + (s.hc ?? 0) : "";
+        const radialsTotal = s.radialsTotal !== null && s.radialsTotal !== undefined
+          ? s.radialsTotal
+          : (s.radialsLC !== null || s.radialsHC !== null) ? (s.radialsLC ?? 0) + (s.radialsHC ?? 0) : "";
         rows.push([
           dateToStr(s.date),
           s.cmNumber,
-          s.lc ?? "",
-          s.hc ?? "",
+          s.radialsLC ?? "",
+          s.radialsHC ?? "",
           radialsTotal,
-          s.agri ?? "",
+          s.radialsAgri ?? "",
         ]);
       }
     }
@@ -256,12 +254,12 @@ export async function downloadCuttingWorkbook(records, filename, extras = {}) {
     ws.views = [{ state: "frozen", ySplit: 2 }];
     ws.autoFilter = {
       from: { row: 2, column: 1 },
-      to: { row: 2, column: 17 },
+      to: { row: 2, column: 12 },
     };
-    applyColumnWidths(ws, [13, 16, 14, 26, 10, 10, 10, 10, 10, 14, 15, 15, 14, 14, 18, 12, 65]);
+    applyColumnWidths(ws, [13, 16, 14, 26, 10, 10, 16, 16, 14, 14, 16, 65]);
 
     if (totalsRowIndex) {
-      for (let col = 7; col <= 16; col += 1) {
+      for (let col = 7; col <= 11; col += 1) {
         const totalCell = ws.getCell(totalsRowIndex, col);
         if (monthRecords.length > 0) {
           totalCell.value = {
@@ -298,8 +296,8 @@ export async function downloadCuttingWorkbook(records, filename, extras = {}) {
 
   if (validationLog.length > 0) {
     const logRows = [
-      ["Body Date", "Time", "Message Type", "Cutter", "Issue", "Action Taken"],
-      ...validationLog.map((e) => [e.date, e.time, e.messageType, e.cutter, e.issue, e.action]),
+      ["Body Date", "Time", "Message Type", "Cutter", "Issue", "Action Taken", "Raw Text"],
+      ...validationLog.map((e) => [e.date, e.time, e.messageType, e.cutter, e.issue, e.action, e.rawText || ""]),
     ];
     const ws = wb.addWorksheet("Validation_Log");
     logRows.forEach((row) => ws.addRow(row));
@@ -308,9 +306,9 @@ export async function downloadCuttingWorkbook(records, filename, extras = {}) {
     ws.views = [{ state: "frozen", ySplit: 1 }];
     ws.autoFilter = {
       from: { row: 1, column: 1 },
-      to: { row: 1, column: 6 },
+      to: { row: 1, column: 7 },
     };
-    applyColumnWidths(ws, [12, 12, 14, 12, 44, 44]);
+    applyColumnWidths(ws, [12, 12, 14, 12, 44, 44, 60]);
   }
 
   await workbookToBrowserDownload(wb, filename);

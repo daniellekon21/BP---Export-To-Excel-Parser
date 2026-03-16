@@ -22,6 +22,7 @@ export function extractBodyDate(body) {
 // Fix common operator typos before pattern matching.
 export function normalizeCuttingLine(line) {
   let s = line;
+  s = s.replace(/\s*<This message was edited>\s*$/i, "");
   s = s.replace(/[–—−]/g, "-");
   s = s.replace(/\b(?:CM\s+|Machine\s+)(\d)/gi, "CM$1");
   s = s.replace(/(\d)([A-Za-z])/g, "$1 $2");
@@ -50,33 +51,32 @@ export function classifyLine(line) {
 // Old-format: raw string → canonical Excel column name.
 // Longest match first to avoid "Radial(LC)" landing in the HC column.
 export function mapTyreType(raw) {
-  const t = raw.trim().toLowerCase().replace(/[()]/g, " ").replace(/\s+/g, " ").trim();
-  if (t.includes("agri"))                                                    return "agricultural_t";
-  if (t.includes("passenger") || t === "pcr")                               return "passenger";
-  if (/4.?x.?4/i.test(t))                                                   return "fourx4";
-  if (t.includes("radial") && (t.includes("lc") || t.includes("light")))   return "tread_lc";
-  if (t.includes("light") || t.includes("lc"))                              return "light_commercial";
-  if (t.includes("heavy") || t.includes("hc") || t.includes("truck") || t.includes("radial")) return "heavy_commercial_t";
-  if (t.includes("motor"))                                                   return "motorcycle";
-  if (t.includes("tread"))                                                   return "treads";
+  const t = raw.trim().toLowerCase().replace(/[().]/g, " ").replace(/\s+/g, " ").trim();
+  if (t.includes("nylon"))                                                  return "nylonsLC";
+  if (t.includes("agri"))                                                    return "radialsAgri";
+  if (t.includes("radial") && (t.includes("lc") || t.includes("light")))   return "radialsLC";
+  if (t.includes("light") || t.includes("lc"))                              return "radialsLC";
+  if (t.includes("heavy") || t.includes("hc") || t.includes("truck") || t.includes("radial")) return "radialsHC";
+  if (t.includes("tread"))                                                   return "radialsAgriTreads";
   return "unknown_type";
 }
 
 // New-format tyre abbreviation → column key.
 export function mapTyreTypeNew(raw) {
   const t = raw.replace(/\*/g, "").trim().toLowerCase();
-  if (t === "lc" || t.includes("light")) return "light_commercial";
-  if (t === "hc" || t.includes("heavy")) return "heavy_commercial_t";
-  if (t.startsWith("agri"))              return "agricultural_t";
+  if (t.includes("nylon"))              return "nylonsLC";
+  if (t === "lc" || t.includes("light")) return "radialsLC";
+  if (t === "hc" || t.includes("heavy")) return "radialsHC";
+  if (t.startsWith("agri"))              return "radialsAgri";
   return "unknown_type";
 }
 
 // New-format tread abbreviation → column key.
 export function mapTreadTypeNew(raw) {
   const t = raw.replace(/\*/g, "").trim().toLowerCase();
-  if (t === "lc" || t.includes("light")) return "tread_lc";
-  if (t === "hc" || t.includes("heavy")) return "tread_hc";
-  if (t.startsWith("agri"))              return "tread_agri";
+  if (t === "lc" || t.includes("light")) return "radialsAgriTreads";
+  if (t === "hc" || t.includes("heavy")) return "radialsAgriTreads";
+  if (t.startsWith("agri"))              return "radialsAgriTreads";
   return "unknown_type";
 }
 
@@ -88,6 +88,7 @@ export function parseMachineLine(line) {
   let m;
 
   // Strip trailing status commentary after a parsed count
+  line = line.replace(/(CM\s*\d\s*[-=]\s*\d+\s+[A-Za-z][A-Za-z.\s()]*)\s*-\s*(?:stopped|idle|waiting|offloading|breakdown|cleaning|paused|maintenance|no\s+production|not\s+(?:in\s+use|cutting|working))\b.*$/i, "$1");
   line = line.replace(/(CM\s*\d\s*[-=]\s*\d+)\s*-\s*(?:stopped|idle|waiting|offloading|breakdown|cleaning|paused|maintenance|no\s+production|not\s+(?:in\s+use|cutting|working))\b.*$/i, "$1");
 
   // Compound: "CM3-6 Agri + 11 treads"
@@ -101,11 +102,11 @@ export function parseMachineLine(line) {
   }
 
   // Tread Cut: "CM2-14 (Agri) - Tread Cut 21"
-  m = line.match(/CM\s*(\d)\s*[-=]\s*(\d+)\s*\(?([A-Za-z]+)\)?\s*-\s*Tread\s*Cut\s*(\d+)/i);
+  m = line.match(/CM\s*(\d)\s*[-=]\s*(\d+)\s*\(?([A-Za-z.]+)\)?\s*-\s*Tread\s*Cut\s*(\d+)/i);
   if (m) {
     return [
       { cmNum: parseInt(m[1], 10), column: mapTyreType(m[3]), count: parseInt(m[2], 10) },
-      { cmNum: parseInt(m[1], 10), column: "treads",           count: parseInt(m[4], 10) },
+      { cmNum: parseInt(m[1], 10), column: "radialsAgriTreads", count: parseInt(m[4], 10) },
     ];
   }
 
@@ -120,14 +121,14 @@ export function parseMachineLine(line) {
   }
 
   // Format G: CM1 TypeName - Count
-  m = line.match(/CM\s*(\d)\s+([A-Za-z][A-Za-z ]*?)\s+-\s*(\d+)\s*$/i);
+  m = line.match(/CM\s*(\d)\s+([A-Za-z][A-Za-z. ]*?)\s+-\s*(\d+)\s*$/i);
   if (m) {
     const count = parseInt(m[3], 10);
     if (!isNaN(count)) return [{ cmNum: parseInt(m[1], 10), column: mapTyreType(m[2]), count }];
   }
 
   // Format A: CM1 = TypeName - Count
-  m = line.match(/CM\s*(\d)\s*=\s*([A-Za-z][A-Za-z ]*?)\s*-\s*(\d+|N\/?A)\b/i);
+  m = line.match(/CM\s*(\d)\s*=\s*([A-Za-z][A-Za-z. ]*?)\s*-\s*(\d+|N\/?A)\b/i);
   if (m) {
     const countStr = m[3].trim();
     const count = /n\/?a/i.test(countStr) ? null : parseInt(countStr, 10);
@@ -135,32 +136,36 @@ export function parseMachineLine(line) {
   }
 
   // NA: CM1 = N/A / CM1-not in use / etc.
-  m = line.match(/CM\s*(\d)\s*[-=\s]+(N\/?A|not\s+in\s+use|breakdown|paused|off|offloading|beltrim|maintenance)\b/i);
+  m = line.match(/CM\s*(\d)\s*[-=\s]+(N\/?A|not\s+in\s+use|breakdown|paused|off|offline|offloading|beltrim|maintenance|shortstaffed|short\s*staffed)\b/i);
   if (m) return [{ cmNum: parseInt(m[1], 10), column: "", count: null, isStatus: true }];
 
+  // Zero-count with parenthesized reason: CM3-0 (Offline-shortstaffed)
+  m = line.match(/CM\s*(\d)\s*[-=]\s*0\s*\(.*\)?\s*$/i);
+  if (m) return [{ cmNum: parseInt(m[1], 10), column: "", count: 0, isStatus: true }];
+
   // Format E: CM1 - TypeName = Count
-  m = line.match(/CM\s*(\d)\s*-\s*([A-Za-z][A-Za-z ]*?)\s*=\s*(\d+)/i);
+  m = line.match(/CM\s*(\d)\s*-\s*([A-Za-z][A-Za-z. ]*?)\s*=\s*(\d+)/i);
   if (m) {
     const count = parseInt(m[3], 10);
     if (!isNaN(count)) return [{ cmNum: parseInt(m[1], 10), column: mapTyreType(m[2]), count }];
   }
 
   // Format C: CM1 - Count TypeName (handles optional parens + LC qualifier)
-  m = line.match(/CM\s*(\d)\s*-\s*(\d+)\s*[-\s]+\(?([A-Za-z][A-Za-z\s()]*?)\s*$/i);
+  m = line.match(/CM\s*(\d)\s*-\s*(\d+)\s*[-\s]+\(?([A-Za-z][A-Za-z.\s()]*?)\s*-?\s*$/i);
   if (m) {
     const count = parseInt(m[2], 10);
     if (!isNaN(count)) return [{ cmNum: parseInt(m[1], 10), column: mapTyreType(m[3]), count }];
   }
 
   // Format B: CM1 = Count TypeName
-  m = line.match(/CM\s*(\d)\s*=\s*(\d+)\s+([A-Za-z][A-Za-z\s()]*?)\s*$/i);
+  m = line.match(/CM\s*(\d)\s*=\s*(\d+)\s+([A-Za-z][A-Za-z.\s()]*?)\s*$/i);
   if (m) {
     const count = parseInt(m[2], 10);
     if (!isNaN(count)) return [{ cmNum: parseInt(m[1], 10), column: mapTyreType(m[3]), count }];
   }
 
   // Format F: CM1 Count TypeName (no separator)
-  m = line.match(/^CM\s*(\d)\s+(\d+)\s+([A-Za-z][A-Za-z\s()]*?)\s*$/i);
+  m = line.match(/^CM\s*(\d)\s+(\d+)\s+([A-Za-z][A-Za-z.\s()]*?)\s*$/i);
   if (m) {
     const count = parseInt(m[2], 10);
     if (!isNaN(count)) return [{ cmNum: parseInt(m[1], 10), column: mapTyreType(m[3]), count }];
@@ -176,20 +181,24 @@ export function parseMachineLine(line) {
   return [];
 }
 
+export function parseStandaloneTreadLine(line) {
+  const m = line.match(/^\s*treads?\s+cuts?\.?\s*[-:]\s*(\d+)\s*$/i);
+  if (!m) return null;
+  const count = parseInt(m[1], 10);
+  return Number.isNaN(count) ? null : count;
+}
+
 // ─── Machine Row Factory ──────────────────────────────────────────────────────
 
 // Create a blank machine row — one per machine per timeframe.
 export function makeMachineRow(date, cmNumber, series, startTime, finishTime, operator = "", rawMessage = "") {
   return {
     date, cmNumber, series, startTime, finishTime, operator, rawMessage,
-    passenger: null, fourx4: null, motorcycle: null,
-    light_commercial: null,   // col 9  — LC tyre (PCR)
-    heavy_commercial_t: null, // col 11 — HC tyre (RADIALS)
-    agricultural_t: null,     // col 12 — Agri tyre (NYLONS)
-    tread_lc: null,           // col 10 — LC tread (RADIALS)
-    tread_hc: null,           // col 13 — HC tread (NYLONS)
-    tread_agri: null,         // col 12 — Agri tread (NYLONS, overrides agricultural_t)
-    treads: null,             // col 15 — old-format tread cut total
+    radialsLC: null,
+    radialsHC: null,
+    radialsAgri: null,
+    radialsAgriTreads: null,
+    nylonsLC: null,
   };
 }
 
@@ -212,13 +221,13 @@ export function flushCutterBlock(block, meta, records) {
 
 export function isValidNewType(raw) {
   const t = raw.replace(/\*/g, "").trim().toLowerCase();
-  return t === "lc" || t === "hc" || t === "agri";
+  return t === "lc" || t === "hc" || t === "agri" || t === "nylon" || t === "nylons";
 }
 
 // ─── Summary Block Parsers ────────────────────────────────────────────────────
 
 // Parse cutter blocks from a Cutting Summary message body.
-// Returns [{cmNum, lc, hc, agri, tread_lc, tread_hc, tread_agri}]
+// Returns [{cmNum, radialsLC, radialsHC, radialsAgri, radialsAgriTreads}]
 export function parseSummaryBlocks(body) {
   const blocks = [];
   let cur = null;
@@ -228,15 +237,16 @@ export function parseSummaryBlocks(body) {
 
   function applyTypeQty(rawType, qty, forceTread = false) {
     const t = rawType.trim().toLowerCase();
-    if (forceTread || /^tread\s+lc$/.test(t)) { cur.tread_lc = qty; return; }
-    if (forceTread || /^tread\s+hc$/.test(t)) { cur.tread_hc = qty; return; }
-    if (forceTread || /^tread\s+agri/.test(t)) { cur.tread_agri = qty; return; }
+    if (forceTread || /^tread\s+lc$/.test(t) || /^tread\s+hc$/.test(t) || /^tread\s+agri/.test(t)) {
+      cur.radialsAgriTreads = (cur.radialsAgriTreads ?? 0) + qty;
+      return;
+    }
     // Bare "radials" (no LC/HC qualifier) → direct radials total
-    if (/^radials?$/.test(t)) { cur.radials_total = qty; return; }
-    const col = mapTyreType(rawType);
-    if (col === "light_commercial") cur.lc = qty;
-    else if (col === "heavy_commercial_t") cur.hc = qty;
-    else if (col === "agricultural_t") cur.agri = qty;
+    if (/^radials?$/.test(t)) { cur.radialsTotal = qty; return; }
+    if (t.includes("nylon")) cur.nylonsLC = qty;
+    else if (t.includes("light") || /\blc\b/.test(t)) cur.radialsLC = qty;
+    else if (t.includes("heavy") || t.includes("truck") || /\bhc\b/.test(t)) cur.radialsHC = qty;
+    else if (t.includes("agri")) cur.radialsAgri = qty;
   }
 
   function parseInlinePayload(payload) {
@@ -262,7 +272,7 @@ export function parseSummaryBlocks(body) {
     const cutterMatch = line.match(/^\*?(?:cutter|cm)\s*[- ]?(\d+)\*?(?:\s*[:=\-]\s*(.*))?$/i);
     if (cutterMatch) {
       if (cur) blocks.push(cur);
-      cur = { cmNum: parseInt(cutterMatch[1], 10), lc: null, hc: null, agri: null, tread_lc: null, tread_hc: null, tread_agri: null, radials_total: null };
+      cur = { cmNum: parseInt(cutterMatch[1], 10), radialsLC: null, radialsHC: null, radialsAgri: null, radialsAgriTreads: null, nylonsLC: null, radialsTotal: null };
       section = null; lastTypeField = null; seenTotal = false;
       if (cutterMatch[2]) parseInlinePayload(cutterMatch[2]);
       continue;
@@ -274,8 +284,8 @@ export function parseSummaryBlocks(body) {
 
     const inlineTread = line.match(/^tread\s+(lc|hc|agri)\s*:\s*(\d+)/i);
     if (inlineTread) {
-      const t = inlineTread[1].toLowerCase(), qty = parseInt(inlineTread[2], 10);
-      if (t === "lc") cur.tread_lc = qty; else if (t === "hc") cur.tread_hc = qty; else cur.tread_agri = qty;
+      const qty = parseInt(inlineTread[2], 10);
+      cur.radialsAgriTreads = (cur.radialsAgriTreads ?? 0) + qty;
       continue;
     }
 
@@ -283,9 +293,9 @@ export function parseSummaryBlocks(body) {
     if (typeQty) {
       const t = typeQty[1].toLowerCase(), qty = parseInt(typeQty[2], 10);
       if (section === "tread") {
-        if (t === "lc") cur.tread_lc = qty; else if (t === "hc") cur.tread_hc = qty; else cur.tread_agri = qty;
+        cur.radialsAgriTreads = (cur.radialsAgriTreads ?? 0) + qty;
       } else {
-        if (t === "lc") cur.lc = qty; else if (t === "hc") cur.hc = qty; else cur.agri = qty;
+        if (t === "lc") cur.radialsLC = qty; else if (t === "hc") cur.radialsHC = qty; else cur.radialsAgri = qty;
       }
       continue;
     }
@@ -301,10 +311,12 @@ export function parseSummaryBlocks(body) {
       const qty = parseInt(m_qty[1], 10);
       if (lastTypeField === "tyre" && cur._tyreType) {
         const t = cur._tyreType;
-        if (t === "lc") cur.lc = qty; else if (t === "hc") cur.hc = qty; else if (t === "agri") cur.agri = qty;
+        if (t === "lc") cur.radialsLC = qty;
+        else if (t === "hc") cur.radialsHC = qty;
+        else if (t === "agri") cur.radialsAgri = qty;
+        else if (t === "nylon" || t === "nylons") cur.nylonsLC = qty;
       } else if (lastTypeField === "tread" && cur._treadType) {
-        const t = cur._treadType;
-        if (t === "lc") cur.tread_lc = qty; else if (t === "hc") cur.tread_hc = qty; else if (t === "agri") cur.tread_agri = qty;
+        cur.radialsAgriTreads = (cur.radialsAgriTreads ?? 0) + qty;
       }
     }
   }
@@ -323,9 +335,10 @@ export function parseLegacyDailySummaryBlocks(body) {
   }
   function parseType(raw) {
     const t = raw.toLowerCase();
-    if (t.includes("light") || /\blc\b/.test(t)) return "lc";
-    if (t.includes("truck") || t.includes("heavy") || /\bhc\b/.test(t)) return "hc";
-    if (t.includes("agri")) return "agri";
+    if (t.includes("nylon")) return "nylonsLC";
+    if (t.includes("light") || /\blc\b/.test(t)) return "radialsLC";
+    if (t.includes("truck") || t.includes("heavy") || /\bhc\b/.test(t)) return "radialsHC";
+    if (t.includes("agri")) return "radialsAgri";
     return null;
   }
   for (const rawLine of body.split("\n")) {
@@ -348,18 +361,33 @@ export function parseLegacyCuttingSummaryBlocks(body) {
   const byCm = new Map();
   let currentCm = null;
 
+  function parseCm(raw) {
+    const t = raw.trim().toLowerCase();
+    if (t === "1" || t === "one") return 1;
+    if (t === "2" || t === "two") return 2;
+    if (t === "3" || t === "three") return 3;
+    return null;
+  }
+
   function ensure(cmNum) {
-    if (!byCm.has(cmNum)) byCm.set(cmNum, { cmNum, lc: null, hc: null, agri: null, tread_lc: null, tread_hc: null, tread_agri: null, _hasMarker: true });
+    if (!byCm.has(cmNum)) {
+      byCm.set(cmNum, {
+        cmNum,
+        radialsLC: null, radialsHC: null, radialsAgri: null,
+        radialsAgriTreads: null, nylonsLC: null, radialsTotal: null,
+        _hasMarker: true,
+        _untypedQty: null,
+      });
+    }
     return byCm.get(cmNum);
   }
   function applyTypeQty(block, rawType, qty) {
-    const col = mapTyreType(rawType);
-    if (col === "light_commercial") block.lc = qty;
-    else if (col === "heavy_commercial_t") block.hc = qty;
-    else if (col === "agricultural_t") block.agri = qty;
-    else if (/tread\s*lc/i.test(rawType)) block.tread_lc = qty;
-    else if (/tread\s*hc/i.test(rawType)) block.tread_hc = qty;
-    else if (/tread\s*agri/i.test(rawType)) block.tread_agri = qty;
+    const t = rawType.trim().toLowerCase();
+    if (/tread\s*(lc|hc|agri)/i.test(rawType) || /\btreads?\b/i.test(rawType)) block.radialsAgriTreads = qty;
+    else if (t.includes("nylon")) block.nylonsLC = qty;
+    else if (t.includes("light") || /\blc\b/.test(t)) block.radialsLC = qty;
+    else if (t.includes("heavy") || t.includes("truck") || /\bhc\b/.test(t)) block.radialsHC = qty;
+    else if (t.includes("agri")) block.radialsAgri = qty;
   }
   function parseSegment(segment, block) {
     const s = segment.trim();
@@ -367,11 +395,33 @@ export function parseLegacyCuttingSummaryBlocks(body) {
     const explicit = [...s.matchAll(/([A-Za-z][A-Za-z ]+?)\s*[-=:]\s*(\d+)/g)];
     if (explicit.length > 0) { for (const m of explicit) applyTypeQty(block, m[1].trim(), parseInt(m[2], 10)); return; }
     const loose = s.match(/^([A-Za-z][A-Za-z ]+)\s+(\d+)$/);
-    if (loose) applyTypeQty(block, loose[1].trim(), parseInt(loose[2], 10));
+    if (loose) { applyTypeQty(block, loose[1].trim(), parseInt(loose[2], 10)); return; }
+
+    const countFirst = s.match(/^(\d+)\s*[-–]?\s*\(?([A-Za-z][A-Za-z.\s()]*)\)?$/);
+    if (countFirst) {
+      const qty = parseInt(countFirst[1], 10);
+      const rawType = countFirst[2].trim();
+      if (!isNaN(qty) && rawType) { applyTypeQty(block, rawType, qty); return; }
+    }
+
+    const bareQty = s.match(/^(\d+)\s*$/);
+    if (bareQty) {
+      const qty = parseInt(bareQty[1], 10);
+      if (!isNaN(qty)) block._untypedQty = qty;
+    }
   }
   for (const rawLine of body.split("\n")) {
     const line = rawLine.trim();
     if (!line || /(?:cutting\s+)?summary\b/i.test(line) || /^(\d{1,2}\/\d{1,2}\/\d{4}|date\s*[-:])/i.test(line) || /^total\b/i.test(line)) continue;
+
+    const machineHeader = line.match(/^machine\s+(one|two|three|\d)\s*[-:]\s*(.*)$/i);
+    if (machineHeader) {
+      currentCm = parseCm(machineHeader[1]);
+      if (!currentCm) continue;
+      parseSegment(machineHeader[2], ensure(currentCm));
+      continue;
+    }
+
     const cmHeader = line.match(/^CM\s*[- ]?(\d)\s*=\s*(.*)$/i);
     if (cmHeader) {
       currentCm = parseInt(cmHeader[1], 10);
@@ -388,31 +438,124 @@ export function inferDailySummaryType(records, date, cmNumberLabel) {
   const cols = new Set();
   for (const r of records) {
     if (!r.date || `${r.date.year}-${r.date.month}-${r.date.day}` !== dateKey || r.cmNumber !== cmNumberLabel) continue;
-    if (r.light_commercial != null) cols.add("lc");
-    if (r.heavy_commercial_t != null) cols.add("hc");
-    if (r.agricultural_t != null) cols.add("agri");
+    if (r.radialsLC != null) cols.add("radialsLC");
+    if (r.radialsHC != null) cols.add("radialsHC");
+    if (r.radialsAgri != null) cols.add("radialsAgri");
+    if (r.nylonsLC != null) cols.add("nylonsLC");
   }
   return cols.size === 1 ? [...cols][0] : null;
 }
 
 // ─── Old-Format Untyped Count Resolution ──────────────────────────────────────
 
-export function resolveUntypedCounts(records) {
-  const typesByDay = new Map();
-  for (const r of records) {
-    const d = r?.date ? `${r.date.year}-${String(r.date.month).padStart(2,"0")}-${String(r.date.day).padStart(2,"0")}` : "";
-    if (!d) continue;
-    if (!typesByDay.has(d)) typesByDay.set(d, new Set());
-    for (const col of ["light_commercial","heavy_commercial_t","agricultural_t"]) {
-      if (r[col] != null) typesByDay.get(d).add(col);
-    }
+export function resolveUntypedCounts(records, summaryRecords = [], validationLog = []) {
+  const dateKey = (d) => d ? `${d.year}-${String(d.month).padStart(2,"0")}-${String(d.day).padStart(2,"0")}` : "";
+  const cmNum = (cmLabel) => {
+    const m = String(cmLabel ?? "").match(/(\d+)/);
+    return m ? parseInt(m[1], 10) : null;
+  };
+  const machineDayKey = (d, cmLabel) => {
+    const dk = dateKey(d);
+    const cm = cmNum(cmLabel);
+    return dk && cm ? `${dk}|${cm}` : "";
+  };
+  const typedColumnFromRecord = (r) => {
+    const cols = [];
+    if (r.radialsLC != null) cols.push("radialsLC");
+    if (r.radialsHC != null) cols.push("radialsHC");
+    if (r.radialsAgri != null) cols.push("radialsAgri");
+    if (r.nylonsLC != null) cols.push("nylonsLC");
+    return cols.length === 1 ? cols[0] : null;
+  };
+
+  const summaryTypeByMachineDay = new Map();
+  for (const s of summaryRecords) {
+    const key = machineDayKey(s?.date, s?.cmNumber);
+    if (!key) continue;
+    if (!summaryTypeByMachineDay.has(key)) summaryTypeByMachineDay.set(key, new Set());
+    const bucket = summaryTypeByMachineDay.get(key);
+    if (s.radialsLC != null) bucket.add("radialsLC");
+    if (s.radialsHC != null) bucket.add("radialsHC");
+    if (s.radialsAgri != null) bucket.add("radialsAgri");
+    if (s.nylonsLC != null) bucket.add("nylonsLC");
   }
-  for (const r of records) {
+
+  const rowsByMachineDay = new Map();
+  for (let i = 0; i < records.length; i += 1) {
+    const r = records[i];
+    const key = machineDayKey(r?.date, r?.cmNumber);
+    if (!key) continue;
+    if (!rowsByMachineDay.has(key)) rowsByMachineDay.set(key, []);
+    rowsByMachineDay.get(key).push(i);
+  }
+
+  for (let i = 0; i < records.length; i += 1) {
+    const r = records[i];
     if (r._untypedCount == null) continue;
-    const d = r?.date ? `${r.date.year}-${String(r.date.month).padStart(2,"0")}-${String(r.date.day).padStart(2,"0")}` : "";
-    let target = r._hintColumn ?? null;
-    if (!target) { const dayTypes = typesByDay.get(d); if (dayTypes?.size === 1) target = [...dayTypes][0]; }
-    if (target) r[target] = (r[target] ?? 0) + r._untypedCount;
+
+    const key = machineDayKey(r?.date, r?.cmNumber);
+    const bucket = key ? (rowsByMachineDay.get(key) || []) : [];
+    const pos = bucket.indexOf(i);
+
+    let target = null;
+    let source = "";
+
+    if (pos >= 0) {
+      for (let p = pos - 1; p >= 0; p -= 1) {
+        const prev = records[bucket[p]];
+        const prevCol = typedColumnFromRecord(prev);
+        if (prevCol) {
+          target = prevCol;
+          source = "previous same-day text for same machine";
+          break;
+        }
+      }
+    }
+
+    if (!target && pos >= 0) {
+      for (let n = pos + 1; n < bucket.length; n += 1) {
+        const next = records[bucket[n]];
+        const nextCol = typedColumnFromRecord(next);
+        if (nextCol) {
+          target = nextCol;
+          source = "following same-day text for same machine";
+          break;
+        }
+      }
+    }
+
+    if (!target) {
+      const summaryTypes = key ? summaryTypeByMachineDay.get(key) : null;
+      if (summaryTypes && summaryTypes.size === 1) {
+        target = [...summaryTypes][0];
+        source = "daily summary for same machine";
+      }
+    }
+
+    const timeStr = (r.startTime && r.finishTime) ? `${formatTime(r.startTime)}-${formatTime(r.finishTime)}` : "";
+    if (target) {
+      r[target] = (r[target] ?? 0) + r._untypedCount;
+      validationLog.push({
+        date: dateToStr(r.date),
+        time: timeStr,
+        messageType: "Hourly",
+        cutter: r.cmNumber,
+        issue: `Untyped machine count (${r._untypedCount})`,
+        action: `Inferred as ${target} from ${source}`,
+        rawText: r.rawMessage || "",
+      });
+    } else {
+      validationLog.push({
+        date: dateToStr(r.date),
+        time: timeStr,
+        messageType: "Hourly",
+        cutter: r.cmNumber,
+        issue: `Untyped machine count (${r._untypedCount})`,
+        action: "Could not infer type from previous, following, or unambiguous summary data",
+        rawText: r.rawMessage || "",
+      });
+    }
+
     delete r._untypedCount;
     delete r._hintColumn;
   }
