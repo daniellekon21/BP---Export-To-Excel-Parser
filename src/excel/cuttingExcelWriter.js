@@ -228,16 +228,17 @@ export async function downloadCuttingWorkbook(records, filename, extras = {}) {
       rows.push(["Cutting Summary", "", "", "", "", ""]);
       rows.push(["Date", "CM Number", "LC", "HC", "Radials Total", "Agri"]);
       for (const s of sorted) {
-        const radialsTotal = s.totalRadials !== null && s.totalRadials !== undefined
+        const nz = (v) => (v != null && v !== 0) ? v : "";
+        const radialsTotal = s.totalRadials != null && s.totalRadials !== 0
           ? s.totalRadials
-          : (s.totalLC !== null || s.totalHC !== null) ? (s.totalLC ?? 0) + (s.totalHC ?? 0) : "";
+          : (s.totalLC || s.totalHC) ? (s.totalLC ?? 0) + (s.totalHC ?? 0) : "";
         rows.push([
           dateToStr(s.date),
           s.cmNumber,
-          s.totalLC ?? "",
-          s.totalHC ?? "",
+          nz(s.totalLC),
+          nz(s.totalHC),
           radialsTotal,
-          s.totalAgri ?? "",
+          nz(s.totalAgri),
         ]);
       }
     }

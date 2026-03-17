@@ -120,10 +120,12 @@ export function parseCuttingMessagesNew(text) {
         for (const b of parseLegacyDailySummaryBlocks(body)) {
           const cmLabel = `CM - ${b.cmNum}`;
           const inferredType = b.type ?? inferDailySummaryType(records, date, cmLabel);
+          // Treads in daily summary count as Agri
+          const treadAgri = b.treadQty ?? 0;
           if (!inferredType) {
             summaryRecords.push({
               date, series, cmNumber: cmLabel,
-              totalLC: null, totalHC: null, totalRadials: b.qty,
+              totalLC: null, totalHC: null, totalRadials: b.qty + treadAgri,
               totalAgri: null, totalAgriTreads: null,
             });
             continue;
@@ -135,7 +137,7 @@ export function parseCuttingMessagesNew(text) {
             totalLC: inferredType === "radialsLC" ? b.qty : null,
             totalHC: inferredType === "radialsHC" ? b.qty : null,
             totalRadials: null,
-            totalAgri: inferredType === "radialsAgri" ? b.qty : null,
+            totalAgri: (inferredType === "radialsAgri" ? b.qty : 0) + treadAgri || null,
             totalAgriTreads: null,
           });
         }
@@ -304,11 +306,13 @@ export function parseCuttingMessages(text) {
       for (const b of parseLegacyDailySummaryBlocks(body)) {
         const cmLabel = `CM - ${b.cmNum}`;
         const inferredType = b.type ?? inferDailySummaryType(records, date, cmLabel);
+        // Treads in daily summary count as Agri
+        const treadAgri = b.treadQty ?? 0;
         if (!inferredType) {
           // Still record that a summary exists for this machine+day (bare radials)
           summaryRecords.push({
             date, series, cmNumber: cmLabel,
-            totalLC: null, totalHC: null, totalRadials: b.qty,
+            totalLC: null, totalHC: null, totalRadials: b.qty + treadAgri,
             totalAgri: null, totalAgriTreads: null,
           });
           continue;
@@ -320,7 +324,7 @@ export function parseCuttingMessages(text) {
           totalLC: inferredType === "radialsLC" ? b.qty : null,
           totalHC: inferredType === "radialsHC" ? b.qty : null,
           totalRadials: null,
-          totalAgri: inferredType === "radialsAgri" ? b.qty : null,
+          totalAgri: (inferredType === "radialsAgri" ? b.qty : 0) + treadAgri || null,
           totalAgriTreads: null,
         });
       }

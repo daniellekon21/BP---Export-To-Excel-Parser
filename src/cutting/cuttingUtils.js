@@ -60,6 +60,7 @@ export function mapTyreType(raw) {
   if (t.includes("light") || t.includes("lc"))                              return "radialsLC";
   if (t.includes("heavy") || t.includes("hc") || t.includes("truck") || t.includes("radial")) return "radialsHC";
   if (t.includes("tread"))                                                   return "radialsAgriTreads";
+  if (/^tyres?$/.test(t))                                                    return "radialsAgri";
   return "unknown_type";
 }
 
@@ -194,6 +195,13 @@ export function parseMachineLine(line) {
 
   // Format Z: CM1 = Count (no tyre type)
   m = line.match(/^CM\s*(\d)\s*[-=\s]\s*(\d+)\s*$/i);
+  if (m) {
+    const count = parseInt(m[2], 10);
+    if (!isNaN(count)) return [{ cmNum: parseInt(m[1], 10), column: null, count }];
+  }
+
+  // Fallback: CM1-count with any trailing text (unrecognized type description)
+  m = line.match(/CM\s*(\d)\s*[-=]\s*(\d+)\b/i);
   if (m) {
     const count = parseInt(m[2], 10);
     if (!isNaN(count)) return [{ cmNum: parseInt(m[1], 10), column: null, count }];
@@ -376,10 +384,28 @@ export function parseLegacyDailySummaryBlocks(body) {
     const cmNum = parseCm(m[1]);
     if (!cmNum) continue;
     const payload = m[2].trim();
+
+    // Compound: "64 Tyres + 90 Treads" or "85 Tyres + 85 Treads"
+    const compound = payload.match(/(\d+)\s*(?:tyres?)\s*\+\s*(\d+)\s*(?:treads?)/i);
+    if (compound) {
+      const qty = parseInt(compound[1], 10);
+      const treadQty = parseInt(compound[2], 10);
+      if (!isNaN(qty)) blocks.push({ cmNum, qty, type: parseType(payload), treadQty: isNaN(treadQty) ? null : treadQty, raw: line });
+      continue;
+    }
+
+    // Single with "Tyres" label: "137 Tyres"
+    const tyreOnly = payload.match(/(\d+)\s*(?:tyres?)\s*$/i);
+    if (tyreOnly) {
+      const qty = parseInt(tyreOnly[1], 10);
+      if (!isNaN(qty)) blocks.push({ cmNum, qty, type: parseType(payload), treadQty: null, raw: line });
+      continue;
+    }
+
     const qtyMatch = payload.match(/(\d+)/);
     if (!qtyMatch) continue;
     const qty = parseInt(qtyMatch[1], 10);
-    if (!isNaN(qty)) blocks.push({ cmNum, qty, type: parseType(payload), raw: line });
+    if (!isNaN(qty)) blocks.push({ cmNum, qty, type: parseType(payload), treadQty: null, raw: line });
   }
   return blocks;
 }
@@ -525,7 +551,7 @@ export function resolveUntypedCounts(records, summaryRecords = [], validationLog
 
   for (let i = 0; i < records.length; i += 1) {
     const r = records[i];
-    if (r._untypedCount == null) continue;
+    if (r._untypedCount == null || r._untypedCount === 0) continue;
 
     const key = machineDayKey(r?.date, r?.cmNumber);
     const bucket = key ? (rowsByMachineDay.get(key) || []) : [];

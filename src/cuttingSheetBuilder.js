@@ -60,7 +60,7 @@ export function cuttingSheetRows(records) {
   for (let i = 0; i < sorted.length; i += 1) {
     const r = sorted[i];
     // Helper: render a numeric field — null/undefined → blank cell
-    const v = (field) => (r[field] !== null && r[field] !== undefined) ? r[field] : "";
+    const v = (field) => (r[field] != null && r[field] !== 0) ? r[field] : "";
 
     rows.push([
       dateToStr(r.date),                          // 0  Date
