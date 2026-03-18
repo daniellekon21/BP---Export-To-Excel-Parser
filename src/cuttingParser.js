@@ -98,20 +98,32 @@ export function parseCuttingMessagesNew(text) {
 
       if (blocks.length > 0) {
         for (const b of blocks) {
-          const inferredType = b._untypedQty != null ? inferDailySummaryType(records, date, `CM - ${b.cmNum}`) : null;
-          const totalLC = b.radialsLC ?? (inferredType === "radialsLC" ? b._untypedQty : null);
-          const totalHC = b.radialsHC ?? (inferredType === "radialsHC" ? b._untypedQty : null);
-          const totalAgri = b.radialsAgri ?? (inferredType === "radialsAgri" ? b._untypedQty : null);
-          const totalRadials = b.radialsTotal
-            ?? ((totalLC !== null && totalHC !== null) ? ((totalLC ?? 0) + (totalHC ?? 0)) : null)
-            ?? (b._untypedQty != null && inferredType === null ? b._untypedQty : null);
+          const cmLabel = `CM - ${b.cmNum}`;
+          // Infer type for untyped quantities (bare "Tyres" / "Radials" or _untypedQty)
+          const hasUntypedTotal = b.radialsTotal != null && b.radialsLC == null && b.radialsHC == null && b.radialsAgri == null;
+          const needsInference = hasUntypedTotal || b._untypedQty != null;
+          const inferredType = needsInference ? inferDailySummaryType(records, date, cmLabel) : null;
+          const untypedQty = b.radialsTotal ?? b._untypedQty ?? null;
+
+          let totalLC = b.radialsLC ?? (inferredType === "radialsLC" ? untypedQty : null);
+          let totalHC = b.radialsHC ?? (inferredType === "radialsHC" ? untypedQty : null);
+          const baseAgri = b.radialsAgri ?? (inferredType === "radialsAgri" ? untypedQty : null);
+          // In daily summary, treads count as agri — sum them together
+          const treadAgri = b.radialsAgriTreads ?? 0;
+          const totalAgri = baseAgri != null ? baseAgri + treadAgri : (treadAgri > 0 ? treadAgri : null);
+          // Compute totalRadials only when we have typed LC+HC values
+          const totalRadials = (totalLC !== null && totalHC !== null) ? ((totalLC ?? 0) + (totalHC ?? 0)) : null;
           const totalAgriTreads = b.radialsAgriTreads ?? null;
-          const hasAnyValue = totalLC !== null || totalHC !== null || totalAgri !== null || totalAgriTreads !== null || totalRadials !== null;
+          // If inference failed, put the untyped value in "Unknown" column as last resort
+          // Don't mark as unresolved if the quantity is 0 — nothing to classify
+          const _unresolved = untypedQty > 0 && (hasUntypedTotal || (b._untypedQty != null && inferredType == null));
+          const totalUnknown = _unresolved ? untypedQty : null;
+          const hasAnyValue = totalLC !== null || totalHC !== null || totalAgri !== null || totalAgriTreads !== null || totalRadials !== null || totalUnknown !== null;
           if (!hasAnyValue) {
             // N/A or 0 blocks are expected — no need to log
             continue;
           }
-          summaryRecords.push({ date, series, cmNumber: `CM - ${b.cmNum}`, totalLC, totalHC, totalRadials, totalAgri, totalAgriTreads });
+          summaryRecords.push({ date, series, cmNumber: cmLabel, totalLC, totalHC, totalRadials, totalAgri, totalAgriTreads, totalUnknown, _unresolved });
         }
         continue;
       }
@@ -125,8 +137,9 @@ export function parseCuttingMessagesNew(text) {
           if (!inferredType) {
             summaryRecords.push({
               date, series, cmNumber: cmLabel,
-              totalLC: null, totalHC: null, totalRadials: b.qty + treadAgri,
+              totalLC: null, totalHC: null, totalRadials: null,
               totalAgri: null, totalAgriTreads: null,
+              totalUnknown: (b.qty + treadAgri) || null, _unresolved: (b.qty + treadAgri) > 0,
             });
             continue;
           }
@@ -139,6 +152,7 @@ export function parseCuttingMessagesNew(text) {
             totalRadials: null,
             totalAgri: (inferredType === "radialsAgri" ? b.qty : 0) + treadAgri || null,
             totalAgriTreads: null,
+            totalUnknown: null,
           });
         }
       }
@@ -284,20 +298,28 @@ export function parseCuttingMessages(text) {
       let blocks = parseSummaryBlocks(body);
       if (blocks.length === 0) blocks = parseLegacyCuttingSummaryBlocks(body);
       for (const b of blocks) {
-        const inferredType = b._untypedQty != null ? inferDailySummaryType(records, date, `CM - ${b.cmNum}`) : null;
-        const totalLC = b.radialsLC ?? (inferredType === "radialsLC" ? b._untypedQty : null);
-        const totalHC = b.radialsHC ?? (inferredType === "radialsHC" ? b._untypedQty : null);
-        const totalAgri = b.radialsAgri ?? (inferredType === "radialsAgri" ? b._untypedQty : null);
-        const totalRadials = b.radialsTotal
-          ?? ((totalLC !== null && totalHC !== null) ? ((totalLC ?? 0) + (totalHC ?? 0)) : null)
-          ?? (b._untypedQty != null && inferredType === null ? b._untypedQty : null);
+        const cmLabel = `CM - ${b.cmNum}`;
+        const hasUntypedTotal = b.radialsTotal != null && b.radialsLC == null && b.radialsHC == null && b.radialsAgri == null;
+        const needsInference = hasUntypedTotal || b._untypedQty != null;
+        const inferredType = needsInference ? inferDailySummaryType(records, date, cmLabel) : null;
+        const untypedQty = b.radialsTotal ?? b._untypedQty ?? null;
+
+        let totalLC = b.radialsLC ?? (inferredType === "radialsLC" ? untypedQty : null);
+        let totalHC = b.radialsHC ?? (inferredType === "radialsHC" ? untypedQty : null);
+        const baseAgri = b.radialsAgri ?? (inferredType === "radialsAgri" ? untypedQty : null);
+        // In daily summary, treads count as agri — sum them together
+        const treadAgri = b.radialsAgriTreads ?? 0;
+        const totalAgri = baseAgri != null ? baseAgri + treadAgri : (treadAgri > 0 ? treadAgri : null);
+        const totalRadials = (totalLC !== null && totalHC !== null) ? ((totalLC ?? 0) + (totalHC ?? 0)) : null;
         const totalAgriTreads = b.radialsAgriTreads ?? null;
-        const hasAnyValue = totalLC !== null || totalHC !== null || totalAgri !== null || totalAgriTreads !== null || totalRadials !== null;
+        const _unresolved = untypedQty > 0 && (hasUntypedTotal || (b._untypedQty != null && inferredType == null));
+        const totalUnknown = _unresolved ? untypedQty : null;
+        const hasAnyValue = totalLC !== null || totalHC !== null || totalAgri !== null || totalAgriTreads !== null || totalRadials !== null || totalUnknown !== null;
         if (!hasAnyValue && !b._hasMarker) {
           // N/A or 0 blocks are expected — no need to log
           continue;
         }
-        summaryRecords.push({ date, series, cmNumber: `CM - ${b.cmNum}`, totalLC, totalHC, totalRadials, totalAgri, totalAgriTreads });
+        summaryRecords.push({ date, series, cmNumber: cmLabel, totalLC, totalHC, totalRadials, totalAgri, totalAgriTreads, totalUnknown, _unresolved });
       }
       continue;
     }
@@ -309,11 +331,11 @@ export function parseCuttingMessages(text) {
         // Treads in daily summary count as Agri
         const treadAgri = b.treadQty ?? 0;
         if (!inferredType) {
-          // Still record that a summary exists for this machine+day (bare radials)
           summaryRecords.push({
             date, series, cmNumber: cmLabel,
-            totalLC: null, totalHC: null, totalRadials: b.qty + treadAgri,
+            totalLC: null, totalHC: null, totalRadials: null,
             totalAgri: null, totalAgriTreads: null,
+            totalUnknown: b.qty + treadAgri, _unresolved: true,
           });
           continue;
         }
@@ -326,6 +348,7 @@ export function parseCuttingMessages(text) {
           totalRadials: null,
           totalAgri: (inferredType === "radialsAgri" ? b.qty : 0) + treadAgri || null,
           totalAgriTreads: null,
+          totalUnknown: null,
         });
       }
       continue;

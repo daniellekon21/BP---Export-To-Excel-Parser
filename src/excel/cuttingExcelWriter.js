@@ -25,13 +25,14 @@ function withSummaryPlaceholders(summaryRows) {
         date: s.date,
         cmNumber: `CM - ${cm}`,
         totalLC: null, totalHC: null, totalRadials: null,
-        totalAgri: null, totalAgriTreads: null,
+        totalAgri: null, totalAgriTreads: null, totalUnknown: null,
       });
     }
     const cur = bucket.get(cm);
-    for (const k of ["totalLC", "totalHC", "totalRadials", "totalAgri", "totalAgriTreads"]) {
+    for (const k of ["totalLC", "totalHC", "totalRadials", "totalAgri", "totalAgriTreads", "totalUnknown"]) {
       if (s[k] !== null && s[k] !== undefined) cur[k] = s[k];
     }
+    if (s._unresolved) cur._unresolved = true;
   }
 
   const out = [];
@@ -43,7 +44,7 @@ function withSummaryPlaceholders(summaryRows) {
         date: d.date,
         cmNumber: `CM - ${cm}`,
         totalLC: null, totalHC: null, totalRadials: null,
-        totalAgri: null, totalAgriTreads: null,
+        totalAgri: null, totalAgriTreads: null, totalUnknown: null,
       });
     }
   }
@@ -123,20 +124,22 @@ function styleTotalsRow(row, styles) {
 function styleDailySummaryHeaderRows(titleRow, fieldRow, styles) {
   const summaryBlueDark = "FF1F4E79";
 
-  titleRow.eachCell((cell, colNumber) => {
-    cell.font = { bold: true, size: colNumber === 1 ? 16 : 12, color: { argb: styles.textWhite } };
+  for (let c = 1; c <= 7; c += 1) {
+    const cell = titleRow.getCell(c);
+    cell.font = { bold: true, size: c === 1 ? 16 : 12, color: { argb: styles.textWhite } };
     cell.fill = { type: "pattern", pattern: "solid", fgColor: { argb: summaryBlueDark } };
-    cell.alignment = { vertical: "middle", horizontal: colNumber === 1 ? "left" : "center", wrapText: true };
+    cell.alignment = { vertical: "middle", horizontal: c === 1 ? "left" : "center", wrapText: true };
     cell.border = styles.baseBorder;
-  });
-  fieldRow.eachCell((cell) => {
+  }
+  for (let c = 1; c <= 7; c += 1) {
+    const cell = fieldRow.getCell(c);
     cell.font = { bold: true, color: { argb: styles.textWhite } };
     cell.fill = { type: "pattern", pattern: "solid", fgColor: { argb: summaryBlueDark } };
     cell.alignment = { vertical: "middle", horizontal: "center", wrapText: true };
     cell.border = styles.baseBorder;
-  });
+  }
 
-  for (let c = 1; c <= 6; c += 1) {
+  for (let c = 1; c <= 7; c += 1) {
     const topCell = titleRow.getCell(c);
     const bottomCell = fieldRow.getCell(c);
     topCell.border = { ...(topCell.border || {}), top: styles.mediumBlack };
@@ -145,7 +148,7 @@ function styleDailySummaryHeaderRows(titleRow, fieldRow, styles) {
       topCell.border = { ...(topCell.border || {}), left: styles.mediumBlack };
       bottomCell.border = { ...(bottomCell.border || {}), left: styles.mediumBlack };
     }
-    if (c === 6) {
+    if (c === 7) {
       topCell.border = { ...(topCell.border || {}), right: styles.mediumBlack };
       bottomCell.border = { ...(bottomCell.border || {}), right: styles.mediumBlack };
     }
@@ -214,7 +217,7 @@ export async function downloadCuttingWorkbook(records, filename, extras = {}) {
     const monthRecords = byMonth[key] || [];
     const monthSummary = summaryByMonth[key] || [];
 
-    const { rows, unresolvedIndices } = cuttingSheetRows(monthRecords);
+    const { rows, unresolvedIndices, inferredIndices } = cuttingSheetRows(monthRecords);
     let hasCuttingTotalsRow = false;
 
     if (rows.length >= 2) {
@@ -222,11 +225,12 @@ export async function downloadCuttingWorkbook(records, filename, extras = {}) {
       hasCuttingTotalsRow = true;
     }
 
+    const unresolvedSummaryRowIndices = [];
     if (monthSummary.length > 0) {
       const sorted = withSummaryPlaceholders(monthSummary);
       rows.push([]);
-      rows.push(["Cutting Summary", "", "", "", "", ""]);
-      rows.push(["Date", "CM Number", "LC", "HC", "Radials Total", "Agri"]);
+      rows.push(["Cutting Summary", "", "", "", "", "", ""]);
+      rows.push(["Date", "CM Number", "LC", "HC", "Radials Total", "Agri", "Unknown"]);
       for (const s of sorted) {
         const nz = (v) => (v != null && v !== 0) ? v : "";
         const radialsTotal = s.totalRadials != null && s.totalRadials !== 0
@@ -239,7 +243,9 @@ export async function downloadCuttingWorkbook(records, filename, extras = {}) {
           nz(s.totalHC),
           radialsTotal,
           nz(s.totalAgri),
+          nz(s.totalUnknown),
         ]);
+        if (s._unresolved) unresolvedSummaryRowIndices.push(rows.length);
       }
     }
 
@@ -273,37 +279,66 @@ export async function downloadCuttingWorkbook(records, filename, extras = {}) {
         }
       }
       styleTotalsRow(ws.getRow(totalsRowIndex), styles);
+      // Thick frame around TOTALS row
+      styleThickFrame(ws, totalsRowIndex, totalsRowIndex, 1, 12, styles);
+    }
+
+    // Thick frame around the cutting data table (headers + data rows)
+    if (monthRecords.length > 0) {
+      styleThickFrame(ws, 1, dataEndRow, 1, 12, styles);
     }
 
     if (monthSummary.length > 0) {
       const summaryTitleRow = rows.findIndex((r) => Array.isArray(r) && r[0] === "Cutting Summary") + 1;
       if (summaryTitleRow > 0) {
+        styleBodyRows(ws, 3, summaryTitleRow - 2, styles.baseBorder, 12);
         styleDailySummaryHeaderRows(ws.getRow(summaryTitleRow), ws.getRow(summaryTitleRow + 1), styles);
-        styleBodyRows(ws, summaryTitleRow + 2, ws.rowCount, styles.baseBorder);
+        styleBodyRows(ws, summaryTitleRow + 2, ws.rowCount, styles.baseBorder, 7);
         collapseRepeatedDates(ws, 3, summaryTitleRow - 2);
         styleFirstDateRows(ws, 3, summaryTitleRow - 2);
         collapseRepeatedDates(ws, summaryTitleRow + 2, ws.rowCount);
         styleFirstDateRows(ws, summaryTitleRow + 2, ws.rowCount);
-        styleThickFrame(ws, summaryTitleRow, ws.rowCount, 1, 6, styles);
+        styleThickFrame(ws, summaryTitleRow, ws.rowCount, 1, 7, styles);
       } else {
-        styleBodyRows(ws, 3, ws.rowCount, styles.baseBorder);
+        styleBodyRows(ws, 3, ws.rowCount, styles.baseBorder, 12);
         collapseRepeatedDates(ws, 3, ws.rowCount);
         styleFirstDateRows(ws, 3, ws.rowCount);
       }
     } else {
-      styleBodyRows(ws, 3, ws.rowCount, styles.baseBorder);
+      styleBodyRows(ws, 3, ws.rowCount, styles.baseBorder, 12);
       collapseRepeatedDates(ws, 3, ws.rowCount);
       styleFirstDateRows(ws, 3, ws.rowCount);
     }
 
-    // Highlight unresolved-type rows in light blue pastel on the monthly sheet
-    const lightBluePastel = "FFD6EAF8";
-    for (const idx of unresolvedIndices) {
-      const excelRow = dataStartRow + idx; // dataStartRow = 3 (1-based), idx = 0-based within data
+    // Highlight inferred-type rows in pastel light green on the monthly sheet
+    const lightGreenPastel = "FFD5F5E3";
+    for (const idx of inferredIndices) {
+      const excelRow = dataStartRow + idx;
       const row = ws.getRow(excelRow);
       for (let c = 1; c <= 12; c += 1) {
         const cell = row.getCell(c);
-        cell.fill = { type: "pattern", pattern: "solid", fgColor: { argb: lightBluePastel } };
+        cell.fill = { type: "pattern", pattern: "solid", fgColor: { argb: lightGreenPastel } };
+      }
+    }
+
+    // Highlight unresolved-type rows in pastel pink on the monthly sheet
+    // (applied after green so unresolved takes priority over inferred)
+    const lightPinkPastel = "FFFADBD8";
+    for (const idx of unresolvedIndices) {
+      const excelRow = dataStartRow + idx;
+      const row = ws.getRow(excelRow);
+      for (let c = 1; c <= 12; c += 1) {
+        const cell = row.getCell(c);
+        cell.fill = { type: "pattern", pattern: "solid", fgColor: { argb: lightPinkPastel } };
+      }
+    }
+
+    // Highlight unresolved summary rows in pastel pink
+    for (const rowIdx of unresolvedSummaryRowIndices) {
+      const row = ws.getRow(rowIdx);
+      for (let c = 1; c <= 7; c += 1) {
+        const cell = row.getCell(c);
+        cell.fill = { type: "pattern", pattern: "solid", fgColor: { argb: lightPinkPastel } };
       }
     }
   }
@@ -316,7 +351,7 @@ export async function downloadCuttingWorkbook(records, filename, extras = {}) {
     const ws = wb.addWorksheet("Validation_Log");
     logRows.forEach((row) => ws.addRow(row));
     styleHeaderRow(ws.getRow(1), styles, false);
-    styleBodyRows(ws, 2, ws.rowCount, styles.baseBorder);
+    styleBodyRows(ws, 2, ws.rowCount, styles.baseBorder, 7);
     ws.views = [{ state: "frozen", ySplit: 1 }];
     ws.autoFilter = {
       from: { row: 1, column: 1 },

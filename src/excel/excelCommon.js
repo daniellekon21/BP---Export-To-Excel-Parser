@@ -45,13 +45,15 @@ export function styleHeaderRow(row, styles, isLight = false) {
   });
 }
 
-export function styleBodyRows(ws, fromRow, toRow, baseBorder) {
+export function styleBodyRows(ws, fromRow, toRow, baseBorder, colCount) {
   for (let r = fromRow; r <= toRow; r += 1) {
     const row = ws.getRow(r);
-    row.eachCell((cell) => {
+    const cols = colCount || row.cellCount;
+    for (let c = 1; c <= cols; c += 1) {
+      const cell = row.getCell(c);
       cell.alignment = { vertical: "middle", horizontal: "center", wrapText: true };
       cell.border = baseBorder;
-    });
+    }
   }
 }
 
