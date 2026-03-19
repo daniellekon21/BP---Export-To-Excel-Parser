@@ -289,6 +289,8 @@ export function parseSummaryBlocks(body) {
       cur.radialsAgriTreads = (cur.radialsAgriTreads ?? 0) + qty;
       return;
     }
+    // Side walls → HC, qty = ceil(swQty / 2)
+    if (/^(?:side\s*walls?|sw)$/i.test(t)) { cur.radialsHC = (cur.radialsHC ?? 0) + Math.ceil(qty / 2); return; }
     // Bare "radials" or "tyres" (no LC/HC qualifier) → untyped total for inference
     if (/^(?:radials?|tyres?)$/.test(t)) { cur.radialsTotal = (cur.radialsTotal ?? 0) + qty; return; }
     if (t.includes("nylon")) cur.nylonsLC = qty;
@@ -314,8 +316,8 @@ export function parseSummaryBlocks(body) {
     if (pairs.length > 0) { for (const m of pairs) applyTypeQty(m[1], parseInt(m[2], 10)); return; }
     const loose = s.match(/^([A-Za-z][A-Za-z ]+)\s+(\d+)$/);
     if (loose) { applyTypeQty(loose[1], parseInt(loose[2], 10)); return; }
-    // "Count Type" format: e.g. "119 Agri", "131- Light Commercial", "12 - Heavy commercial"
-    const countFirst = s.match(/^(\d+)\s*[-–]?\s*\(?([A-Za-z][A-Za-z ]*[A-Za-z])\)?\.?$/);
+    // "Count Type" format: e.g. "119 Agri", "131- Light Commercial", "51x Side Walls"
+    const countFirst = s.match(/^(\d+)\s*x?\s*[-–]?\s*\(?([A-Za-z][A-Za-z ]*[A-Za-z])\)?\.?$/);
     if (countFirst) { applyTypeQty(countFirst[2], parseInt(countFirst[1], 10)); return; }
     // Bare number (no type label): e.g. "168" from "Machine 1-168"
     const bareQty = s.match(/^(\d+)\s*$/);
@@ -470,6 +472,8 @@ export function parseLegacyCuttingSummaryBlocks(body) {
   function applyTypeQty(block, rawType, qty) {
     const t = rawType.trim().toLowerCase();
     if (/tread\s*(lc|hc|agri)/i.test(rawType) || /\btreads?\b/i.test(rawType)) block.radialsAgriTreads = (block.radialsAgriTreads ?? 0) + qty;
+    // Side walls → HC, qty = ceil(swQty / 2)
+    else if (/^(?:side\s*walls?|sw)$/i.test(t)) block.radialsHC = (block.radialsHC ?? 0) + Math.ceil(qty / 2);
     else if (/^(?:radials?|tyres?)$/.test(t)) block.radialsTotal = (block.radialsTotal ?? 0) + qty;
     else if (t.includes("nylon")) block.nylonsLC = qty;
     else if (/^(?:s|m|l|small|medium|large)$/.test(t)) block.radialsAgri = qty;
@@ -494,7 +498,7 @@ export function parseLegacyCuttingSummaryBlocks(body) {
     const loose = s.match(/^([A-Za-z][A-Za-z ]+)\s+(\d+)$/);
     if (loose) { applyTypeQty(block, loose[1].trim(), parseInt(loose[2], 10)); return; }
 
-    const countFirst = s.match(/^(\d+)\s*[-–]?\s*\(?([A-Za-z][A-Za-z.\s()]*)\)?$/);
+    const countFirst = s.match(/^(\d+)\s*x?\s*[-–]?\s*\(?([A-Za-z][A-Za-z.\s()]*)\)?$/);
     if (countFirst) {
       const qty = parseInt(countFirst[1], 10);
       const rawType = countFirst[2].trim();
@@ -661,7 +665,8 @@ export function resolveUntypedCounts(records, summaryRecords = [], validationLog
     const timeStr = (r.startTime && r.finishTime) ? `${formatTime(r.startTime)}-${formatTime(r.finishTime)}` : "";
     if (target) {
       r[target] = (r[target] ?? 0) + r._untypedCount;
-      r._inferredType = true;
+      // Side walls are definitively HC — don't mark as inferred
+      if (!r._sideWallCount) r._inferredType = true;
       validationLog.push({
         date: dateToStr(r.date),
         time: timeStr,
