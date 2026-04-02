@@ -1,0 +1,142 @@
+2025/02/03, 09:00 - QA Bot: 03/02/2025
+08:00-09:00
+CM1-N/A
+CM2-25 Agriculture
+CM3-17 Agriculture
+2025/02/04, 12:00 - QA Bot: 04/02/2025
+10:30-12:00
+CM1-0
+CM2- 21 (Agri)
+CM3-16 (Agri)
+2025/02/05, 13:48 - QA Bot: 05/02/2025
+12:30-13:30
+CM1-N/A
+CM2-7 Agri + 24 treads
+CM3-8 Agri + 31 treads
+2025/02/07, 11:15 - QA Bot: 07/02/2025
+10:00-11:00
+CM1-N/A
+CM2-16 tyres 36 treads
+CM3-N/A
+2025/02/06, 15:39 - QA Bot: 06/02/2025
+14:15-15:15
+CM2- 5 Agri.
+2025/02/04, 16:06 - QA Bot: 04/02/2025
+14:00-16:00
+CM2- 14 (Agri) - Tread Cut 21
+CM3- 31  (Agri)
+2025/02/03, 10:16 - QA Bot: 03/02/2025
+08:00-09:00
+CM1-0
+CM2-0
+CM3-0
+2025/10/06, 16:17 - QA Bot: 06/10/2025
+15:00-16:00
+CM1- 13Agriculture
+CM2-18 Agriculture
+CM3-30 Agriculture
+2025/10/09, 09:09 - QA Bot: 09/10/2025
+08:00-09:00
+CM1- 21 Radial(LC)
+CM2-20 Radial (LC)
+CM3-30 Agriculture
+2025/10/09, 10:11 - QA Bot: 09/10/2025
+09:00-10:00
+CM1- 27 Radial(LC)
+CM2-20 Radial (LC) +28 Agricultural
+CM3-40 Agricultural
+2025/10/10, 14:11 - QA Bot: 10/10/2025
+13:00-14:00
+CM1-(HC) =17
+            (LC) =12
+
+CM2-(HC)=06
+            (LC)=14
+
+CM3-(LC)=24
+2025/10/09, 16:11 - QA Bot: 09/10/2025
+15:00-16:00
+CM1- 14 LC
+CM2-12  LC
+CM3-16  LC
+2025/02/06, 17:45 - QA Bot: 06/02/2025
+Cutting Summary
+
+Machine 1-N/A (Awaiting spares)
+
+Machine 2-19 Agri.
+
+Total cut- 19 Agri.
+2025/10/06, 17:39 - QA Bot: 06/10/25
+Cutting Summary
+
+CM1= 119 Agri
+
+CM2= 148 Agri
+
+CM3= 176 Agri
+
+Total= 443 Agricultural Tyres
+2025/10/08, 17:16 - QA Bot: 08/10/25
+Cutting Summary
+
+CM1= 87 Agri
+
+CM2= 24 Agri
+
+CM3= 50 Agri
+
+ *Total= 161 Agricultural Tyres*
+ 
+CM1= 20 Radials
+
+CM2= 99 Radials
+
+CM3= 137 Radials
+
+ *Total= 256 Radial Tyres*
+2025/02/05, 18:14 - QA Bot: 05/02/2025
+Cutting Summary
+
+Machine 1-N/A (Awaiting spares)
+
+Machine 2-72 Agri + 213 Treads
+
+Machine 3-59 Agri + 115 Treads
+
+Total cut- 131 Tyres and 328 Treads
+2025/02/10, 10:18 - QA Bot: 10/02/2025
+08:00-09:00
+
+CM1-9 Agri
+
+CM2-49 Treads
+
+08:30-09:30
+
+CM3-17 Agri
+2025/02/10, 10:33 - QA Bot: This message was deleted
+2025/02/10, 09:35 - QA Bot: This message was deleted
+2025/02/10, 10:00 - QA Bot: <Media omitted>
+2025/02/07, 09:00 - QA Bot: Good morning team!
+2025/10/07, 08:15 - QA Bot: 07/10/2025
+
+CM1-Sanele and Lindani
+
+CM2-Ntando and Athulile
+
+CM3-Qiniso and Yamkela
+2025/02/04, 14:07 - QA Bot: 04/02/2025
+12:30 -14:00 (30 mins lunch break)
+CM1-0
+CM2- 21 (Agri)
+CM3-11  (Agri) -
+Treads Cut-8
+2025/02/04, 16:07 - QA Bot: 04/02/2025
+12:30 -14:00 (30 mins lunch break)
+CM2- 14 (Agri) - Tread Cut 21 <This message was edited>
+CM3- 31  (Agri) <This message was edited>
+2025/02/11, 09:00 - QA Bot: 11/02/2036
+08:00-09:00
+CM1-10 Agri
+CM2-12 Agri

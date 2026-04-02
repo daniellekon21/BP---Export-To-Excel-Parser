@@ -58,6 +58,7 @@ export function cuttingSheetRows(records) {
   const rows = [CUTTING_GROUP_HEADER_ROW, CUTTING_FIELD_HEADER_ROW];
   const unresolvedIndices = new Set();
   const inferredIndices = new Set();
+  const ambiguousIndices = new Set();
   for (let i = 0; i < sorted.length; i += 1) {
     const r = sorted[i];
     // Helper: render a numeric field — null/undefined → blank cell
@@ -82,6 +83,7 @@ export function cuttingSheetRows(records) {
     ]);
     if (r._unresolvedType) unresolvedIndices.add(i);
     if (r._inferredType) inferredIndices.add(i);
+    if (r._ambiguousLine) ambiguousIndices.add(i);
   }
-  return { rows, unresolvedIndices, inferredIndices };
+  return { rows, unresolvedIndices, inferredIndices, ambiguousIndices };
 }

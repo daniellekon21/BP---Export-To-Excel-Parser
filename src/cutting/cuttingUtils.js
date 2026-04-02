@@ -7,12 +7,15 @@ export { parseTime, formatTime, dateToStr, splitWhatsAppMessages };
 // ─── Body Date Extractor ──────────────────────────────────────────────────────
 
 // Try "Date - DD/MM/YYYY" first, then bare DD/MM/YYYY on its own line.
+// Accepts both 4-digit and 2-digit years (e.g. 07/11/25 → 2025).
 // Rejects future dates (e.g. operator typo "2036" instead of "2026").
 export function extractBodyDate(body) {
-  let m = body.match(/\bDate\s*[-–]\s*(\d{1,2})\/(\d{1,2})\/(\d{4})/i);
-  if (!m) m = body.match(/^\s*(\d{1,2})\/(\d{1,2})\/(\d{4})\s*$/m);
+  let m = body.match(/\bDate\s*[-–]\s*(\d{1,2})\/(\d{1,2})\/(\d{2,4})/i);
+  if (!m) m = body.match(/^\s*(\d{1,2})\/(\d{1,2})\/(\d{2,4})\s*$/m);
   if (!m) return null;
-  const d = { day: parseInt(m[1], 10), month: parseInt(m[2], 10), year: parseInt(m[3], 10) };
+  let year = parseInt(m[3], 10);
+  if (m[3].length === 2) year += 2000;
+  const d = { day: parseInt(m[1], 10), month: parseInt(m[2], 10), year };
   if (new Date(d.year, d.month - 1, d.day) > new Date()) return null;
   return d;
 }
@@ -56,8 +59,8 @@ export function mapTyreType(raw) {
   if (t.includes("offloading"))                                              return "unknown_type";
   if (/^(?:s|m|l|small|medium|large)$/.test(t))                              return "radialsAgri";
   if (t.includes("nylon"))                                                  return "nylonsLC";
-  if (t.includes("tread"))                                                   return "radialsAgriTreads";
-  if (t.includes("agri"))                                                    return "radialsAgri";
+  if (t.includes("tread") || t.includes("thread"))                           return "radialsAgriTreads";
+  if (t.includes("agri") || /\bagr\b|\bag\b/.test(t))                        return "radialsAgri";
   if (/4.?x.?4/i.test(t))                                                   return "radialsLC";
   if (t.includes("radial") && (t.includes("lc") || t.includes("light")))   return "radialsLC";
   if (t.includes("light") || t.includes("lc"))                              return "radialsLC";
@@ -144,6 +147,14 @@ export function parseMachineLine(line) {
     ];
   }
 
+  // Tread Cut (no agri count): "CM3= Agricultural -Thread Cuts- 19" / "CM3= Agricultural -Thread Cut -22"
+  m = line.match(/CM\s*(\d)\s*=\s*([A-Za-z][A-Za-z. ]*?)\s*-\s*Thread\s*Cuts?\s*[-\s]*(\d+)/i);
+  if (m) {
+    const cmNum = parseInt(m[1], 10);
+    const treadCount = parseInt(m[3], 10);
+    if (!isNaN(treadCount)) return [{ cmNum, column: "radialsAgriTreads", count: treadCount }];
+  }
+
   // Implicit compound: "CM2-20 Agri 18 Treads"
   m = line.match(/CM\s*(\d)\s*[-=]\s*(\d+)\s+([A-Za-z][A-Za-z.]*)\s+(\d+)\s+([A-Za-z]+)/i);
   if (m) {
@@ -154,8 +165,8 @@ export function parseMachineLine(line) {
     if (results.length) return results;
   }
 
-  // Format G: CM1 TypeName - Count
-  m = line.match(/CM\s*(\d)\s+([A-Za-z][A-Za-z. ]*?)\s+-\s*(\d+)\s*$/i);
+  // Format G: CM1 TypeName - Count (space before dash is optional, e.g. "HC-3" or "HC - 3")
+  m = line.match(/CM\s*(\d)\s+([A-Za-z][A-Za-z. ]*?)\s*-\s*(\d+)\s*$/i);
   if (m) {
     const count = parseInt(m[3], 10);
     if (!isNaN(count)) return [{ cmNum: parseInt(m[1], 10), column: mapTyreType(m[2]), count }];
@@ -169,6 +180,12 @@ export function parseMachineLine(line) {
     if (count === null || !isNaN(count)) return [{ cmNum: parseInt(m[1], 10), column: mapTyreType(m[2]), count }];
   }
 
+  // Format A-partial: CM2= TypeName- (trailing dash, no count — tread count follows on next line)
+  m = line.match(/CM\s*(\d)\s*=\s*([A-Za-z][A-Za-z. ]*?)\s*-\s*$/i);
+  if (m) {
+    return [{ cmNum: parseInt(m[1], 10), column: mapTyreType(m[2]), count: null }];
+  }
+
   // NA: CM1 = N/A / CM1-not in use / etc.
   m = line.match(/CM\s*(\d)\s*[-=\s]+(N\/?A|not\s+in\s+use|breakdown|paused|off|offline|offloading|beltrim|maintenance|shortstaffed|short\s*staffed)\b/i);
   if (m) return [{ cmNum: parseInt(m[1], 10), column: "", count: null, isStatus: true }];
@@ -177,11 +194,12 @@ export function parseMachineLine(line) {
   m = line.match(/CM\s*(\d)\s*[-=]\s*0\s*\(.*\)?\s*$/i);
   if (m) return [{ cmNum: parseInt(m[1], 10), column: "", count: 0, isStatus: true }];
 
-  // Format E: CM1 - TypeName = Count
-  m = line.match(/CM\s*(\d)\s*-\s*([A-Za-z][A-Za-z. ]*?)\s*=\s*(\d+)/i);
+  // Format E: CM1 - TypeName = Count, with optional trailing qualifier e.g. "(Threads)"
+  m = line.match(/CM\s*(\d)\s*-\s*([A-Za-z][A-Za-z. ]*?)\s*=\s*(\d+)\s*(\([A-Za-z][A-Za-z. ]*\))?\s*$/i);
   if (m) {
     const count = parseInt(m[3], 10);
-    if (!isNaN(count)) return [{ cmNum: parseInt(m[1], 10), column: mapTyreType(m[2]), count }];
+    const rawType = m[4] ? `${m[2]} ${m[4]}` : m[2];
+    if (!isNaN(count)) return [{ cmNum: parseInt(m[1], 10), column: mapTyreType(rawType), count }];
   }
 
   // Format C: CM1 - Count TypeName (handles optional parens + LC qualifier)
@@ -230,10 +248,33 @@ export function parseMachineLine(line) {
 }
 
 export function parseStandaloneTreadLine(line) {
-  const m = line.match(/^\s*treads?\s+cuts?\.?\s*[-:]\s*(\d+)\s*$/i);
-  if (!m) return null;
-  const count = parseInt(m[1], 10);
-  return Number.isNaN(count) ? null : count;
+  const stripped = line.replace(/^\*+/, "").trim();
+  // "Tread Cuts - 19" / "Thread Cut. - 9" etc.
+  let m = stripped.match(/^\s*th?reads?\s+cuts?\.?\s*[-:]\s*(\d+)\s*$/i);
+  if (m) { const count = parseInt(m[1], 10); return Number.isNaN(count) ? null : count; }
+  // "AGRI RADIAL THREADS=14" / "LC TREADS - 5" — word "threads/treads" then separator and count
+  m = stripped.match(/\bth?reads?\b\s*[=:\-]\s*(\d+)\s*$/i);
+  if (m) { const count = parseInt(m[1], 10); return Number.isNaN(count) ? null : count; }
+  return null;
+}
+
+// Extract a standalone total-treads count from a summary message body.
+// Matches lines like:
+//   "Tread Cut.                   -173"
+//   "Thread Cuts - 173"
+//   "Treads: 50"
+//   "Total Treads = 100"
+// Returns the count, or null if not found.
+export function extractSummaryTotalTreads(body) {
+  for (const rawLine of body.split("\n")) {
+    const line = rawLine.replace(/\t/g, " ").trim();
+    const m = line.match(/^(?:total\s+)?th?reads?\s*(?:cuts?)?\s*\.?\s*[-=:]\s*(\d+)\s*$/i);
+    if (m) {
+      const count = parseInt(m[1], 10);
+      if (!Number.isNaN(count)) return count;
+    }
+  }
+  return null;
 }
 
 // ─── Machine Row Factory ──────────────────────────────────────────────────────
@@ -277,7 +318,7 @@ export function isValidNewType(raw) {
 // Parse cutter blocks from a Cutting Summary message body.
 // Returns [{cmNum, radialsLC, radialsHC, radialsAgri, radialsAgriTreads}]
 export function parseSummaryBlocks(body) {
-  const blocks = [];
+  const blockMap = new Map(); // cmNum → block (merges duplicate CM sections)
   let cur = null;
   let section = null;
   let lastTypeField = null;
@@ -312,9 +353,9 @@ export function parseSummaryBlocks(body) {
       }
       return;
     }
-    const pairs = [...s.matchAll(/([A-Za-z][A-Za-z ]+?)\s*[-=:]\s*(\d+)/g)];
+    const pairs = [...s.matchAll(/([A-Za-z][A-Za-z. ]+?)\s*[-=:]\s*(\d+)/g)];
     if (pairs.length > 0) { for (const m of pairs) applyTypeQty(m[1], parseInt(m[2], 10)); return; }
-    const loose = s.match(/^([A-Za-z][A-Za-z ]+)\s+(\d+)$/);
+    const loose = s.match(/^([A-Za-z][A-Za-z. ]+)\s+(\d+)$/);
     if (loose) { applyTypeQty(loose[1], parseInt(loose[2], 10)); return; }
     // "Count Type" format: e.g. "119 Agri", "131- Light Commercial", "51x Side Walls"
     const countFirst = s.match(/^(\d+)\s*x?\s*[-–]?\s*\(?([A-Za-z][A-Za-z ]*[A-Za-z])\)?\.?$/);
@@ -337,8 +378,11 @@ export function parseSummaryBlocks(body) {
 
     const cutterMatch = line.match(/^\*?(?:cutter|cm|machine)\s*[- ]?(\d+)\*?(?:\s*[:=\-]\s*(.*))?$/i);
     if (cutterMatch) {
-      if (cur) blocks.push(cur);
-      cur = { cmNum: parseInt(cutterMatch[1], 10), radialsLC: null, radialsHC: null, radialsAgri: null, radialsAgriTreads: null, nylonsLC: null, radialsTotal: null };
+      const cmNum = parseInt(cutterMatch[1], 10);
+      if (!blockMap.has(cmNum)) {
+        blockMap.set(cmNum, { cmNum, radialsLC: null, radialsHC: null, radialsAgri: null, radialsAgriTreads: null, nylonsLC: null, radialsTotal: null });
+      }
+      cur = blockMap.get(cmNum);
       section = null; lastTypeField = null; seenTotal = false;
       if (cutterMatch[2]) parseInlinePayload(cutterMatch[2]);
       continue;
@@ -388,8 +432,7 @@ export function parseSummaryBlocks(body) {
       }
     }
   }
-  if (cur) blocks.push(cur);
-  return blocks.map(({ _tyreType, _treadType, ...rest }) => rest);
+  return [...blockMap.values()].map(({ _tyreType, _treadType, ...rest }) => rest);
 }
 
 export function parseLegacyDailySummaryBlocks(body) {
@@ -493,9 +536,9 @@ export function parseLegacyCuttingSummaryBlocks(body) {
       }
       return;
     }
-    const explicit = [...s.matchAll(/([A-Za-z][A-Za-z ]+?)\s*[-=:]\s*(\d+)/g)];
+    const explicit = [...s.matchAll(/([A-Za-z][A-Za-z. ]+?)\s*[-=:]\s*(\d+)/g)];
     if (explicit.length > 0) { for (const m of explicit) applyTypeQty(block, m[1].trim(), parseInt(m[2], 10)); return; }
-    const loose = s.match(/^([A-Za-z][A-Za-z ]+)\s+(\d+)$/);
+    const loose = s.match(/^([A-Za-z][A-Za-z. ]+)\s+(\d+)$/);
     if (loose) { applyTypeQty(block, loose[1].trim(), parseInt(loose[2], 10)); return; }
 
     const countFirst = s.match(/^(\d+)\s*x?\s*[-–]?\s*\(?([A-Za-z][A-Za-z.\s()]*)\)?$/);

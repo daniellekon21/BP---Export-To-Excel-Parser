@@ -1,0 +1,245 @@
+2025/11/03, 08:07 - QA Bot: 03/11/2025
+
+Time: 07:00-08:00
+
+Cutter 1
+Operator: Sipho
+Assistant: Andile
+Tyre Type: LC
+Quantity: 18
+Tread Type: LC
+Quantity: 12
+
+Cutter 2
+Operator: Menzi
+Assistant: Philani
+Tyre Type: HC
+Quantity: 10
+Tread Type: HC
+Quantity: 8
+
+Cutter 3
+Operator: Bhekinkosi
+Assistant: Sanele
+Tyre Type: Agri
+Quantity: 6
+Tread Type: Agri
+Quantity: 4
+2026/04/03, 08:02 - QA Bot: 03/04/2026
+
+Time:08:00-09:00
+
+Cutter 1
+Operator: Sipho
+Assistant: Andile
+Tyre Type:LC
+Quantity:17
+Tread Type:LC
+Quantity:11
+
+CUTTER 2
+Operator:Menzi
+Assistant: Philani
+Tyre Type: HC
+Quantity:9
+Tread Type: HC
+Quantity:6
+
+cutter 3
+Operator: Bhekinkosi
+Assistant: Sanele
+Tyre Type: Agri
+Quantity:5
+Tread Type:Agri
+Quantity:3
+2026/04/03, 09:01 - QA Bot: 03/04/2026
+
+Time : 09:00 - 10:00
+
+Cutter 1
+Operator: Sipho
+Assistant: Andile
+Tyre Type: LC
+Quantity: 18
+Tread Type: LC
+Quantity: 12
+
+Cutter 2
+Operator: Menzi
+Assistant: Philani
+Tyre Type: HC
+Quantity: 10
+
+Cutter 3
+Operator: Bhekinkosi
+Assistant: Sanele
+Tyre Type: Agri
+Quantity: 4
+Tread Type: Agri
+Quantity: 2
+2026/04/04, 08:01 - QA Bot: 04/04/2026
+
+Time: 08:00-09:00
+
+Cutter 1
+Operator: Sipho
+Assistant: Andile
+Tyre Type: LC
+Quantity: 16
+Tread Type: LC
+Quantity: 10
+
+Cutter 2
+Operator: Menzi
+Assistant: Philani
+Tyre Type: HC
+Quantity: 8
+
+Cutter 3
+Operator: Bhekinkosi
+Assistant: Sanele
+Tyre Type: Agri
+Quantity: 4
+Tread Type: Agri
+Quantity: 3
+2026/04/04, 09:00 - QA Bot: 04/04/2026
+
+Time: 09:00-10:00
+
+Cutter 2
+Operator: Menzi
+Assistant: Philani
+Tyre Type: HC
+Quantity: 8
+Tread Type: HC
+Quantity: 5
+
+Cutter 2
+Operator: Menzi
+Assistant: Philani
+Tyre Type: HC
+Quantity: 9
+Tread Type: HC
+Quantity: 6
+
+Cutter 3
+Operator: Bhekinkosi
+Assistant: Sanele
+Tyre Type: Agri
+Quantity: 4
+Tread Type: Agri
+Quantity: 3
+2026/04/05, 08:05 - QA Bot: 05/04/2026
+
+Time:08:00-09:00
+
+Cutter 1
+Operator: Sipho
+Assistant: Andile
+Tyre Type: Passenger
+Quantity: 20
+Tread Type: Passenger
+Quantity: 10
+
+Cutter 2
+Operator: Menzi
+Assistant: Philani
+Tyre Type: HC
+Quantity: 7
+Tread Type: HC
+Quantity: 4
+
+Cutter 3
+Operator: Bhekinkosi
+Assistant: Sanele
+Tyre Type: Agri
+Quantity: 5
+Tread Type: Agri
+Quantity: 3
+2026/05/02, 08:00 - QA Bot: 02/05/2026
+
+Time: 08:00-09:00
+
+Cutter 1
+Operator: Sipho
+Assistant: Andile
+Tyre Type: LC
+Quantity: 19
+Tread Type: LC
+Quantity: 13
+
+Cutter 2
+Operator: Menzi
+Assistant: Philani
+Tyre Type: HC
+Quantity: 9
+Tread Type: HC
+Quantity: 6
+
+Cutter 3
+Operator: Bhekinkosi
+Assistant: Sanele
+Tyre Type: Agri
+Quantity: 6
+Tread Type: Agri
+Quantity: 4
+2026/05/02, 17:05 - QA Bot: 02/05/2026
+
+Cutting Summary
+
+Cutter 1
+Total Tyres
+LC - 36
+HC - 0
+Agri - 0
+Total Treads
+LC - 24
+HC - 0
+Agri - 0
+
+Cutter 2
+Total Tyres
+LC - 0
+HC - 17
+Agri - 0
+Total Treads
+LC - 0
+HC - 11
+Agri - 0
+
+Cutter 3
+Total Tyres
+LC - 0
+HC - 0
+Agri - 11
+Total Treads
+LC - 0
+HC - 0
+Agri - 7
+2026/06/01, 17:10 - QA Bot: 01/06/2026
+
+Cutting Summary
+
+Cutter 1
+Total Tyres
+LC - 21
+HC - 0
+Total Treads
+LC - 15
+HC - 0
+Agri - 0
+
+Cutter 2
+Total Tyres
+HC - 8
+Total Treads
+HC - 5
+
+Cutter 3
+Total Tyres
+Agri - 7
+Total Treads
+Agri - 4
+2026/04/06, 09:00 - QA Bot: Good morning
+2026/04/06, 09:01 - QA Bot: This message was deleted
+2026/04/06, 09:02 - QA Bot: <Media omitted>

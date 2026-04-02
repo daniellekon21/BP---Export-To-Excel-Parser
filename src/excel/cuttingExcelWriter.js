@@ -12,11 +12,21 @@ function normalizeCmNumber(cmNumber) {
 function withSummaryPlaceholders(summaryRows) {
   const byDate = new Map();
 
+  function ensureDate(key, date) {
+    if (!byDate.has(key)) byDate.set(key, { date, byCm: new Map(), totalTreads: null });
+    return byDate.get(key);
+  }
+
   for (const s of summaryRows) {
     if (!s?.date) continue;
     const key = `${s.date.year}-${String(s.date.month).padStart(2, "0")}-${String(s.date.day).padStart(2, "0")}`;
-    if (!byDate.has(key)) byDate.set(key, { date: s.date, byCm: new Map() });
-    const bucket = byDate.get(key).byCm;
+
+    if (s.cmNumber === "Total Treads") {
+      ensureDate(key, s.date).totalTreads = s;
+      continue;
+    }
+
+    const bucket = ensureDate(key, s.date).byCm;
     const cm = normalizeCmNumber(s.cmNumber);
     if (!cm) continue;
 
@@ -47,6 +57,7 @@ function withSummaryPlaceholders(summaryRows) {
         totalAgri: null, totalAgriTreads: null, totalUnknown: null,
       });
     }
+    if (d.totalTreads) out.push(d.totalTreads);
   }
   return out;
 }
@@ -217,7 +228,7 @@ export async function downloadCuttingWorkbook(records, filename, extras = {}) {
     const monthRecords = byMonth[key] || [];
     const monthSummary = summaryByMonth[key] || [];
 
-    const { rows, unresolvedIndices, inferredIndices } = cuttingSheetRows(monthRecords);
+    const { rows, unresolvedIndices, inferredIndices, ambiguousIndices } = cuttingSheetRows(monthRecords);
     let hasCuttingTotalsRow = false;
 
     if (rows.length >= 2) {
@@ -330,6 +341,16 @@ export async function downloadCuttingWorkbook(records, filename, extras = {}) {
       for (let c = 1; c <= 12; c += 1) {
         const cell = row.getCell(c);
         cell.fill = { type: "pattern", pattern: "solid", fgColor: { argb: lightPinkPastel } };
+      }
+    }
+
+    // Highlight ambiguous-CM rows (no machine digit, couldn't infer) in pastel orange
+    const lightOrangePastel = "FFFCE5CC";
+    for (const idx of ambiguousIndices) {
+      const excelRow = dataStartRow + idx;
+      const row = ws.getRow(excelRow);
+      for (let c = 1; c <= 12; c += 1) {
+        row.getCell(c).fill = { type: "pattern", pattern: "solid", fgColor: { argb: lightOrangePastel } };
       }
     }
 

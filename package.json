@@ -10,7 +10,8 @@
     "parse": "node parse_chat.mjs",
     "parse:cutting": "node parse_chat.mjs --type=cutting --format=old",
     "parse:baling": "node parse_chat.mjs --type=baling",
-    "qa:baling:newformat": "node scripts/generate_baling_newformat_qa_pack.mjs"
+    "qa:baling:newformat": "node scripts/generate_baling_newformat_qa_pack.mjs",
+    "qa:cutting": "node scripts/generate_cutting_qa_pack.mjs"
   },
   "dependencies": {
     "exceljs": "^4.4.0",

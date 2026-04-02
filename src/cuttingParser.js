@@ -23,6 +23,7 @@ import {
   parseLegacyCuttingSummaryBlocks,
   inferDailySummaryType,
   resolveUntypedCounts,
+  extractSummaryTotalTreads,
 } from "./cutting/cuttingUtils.js";
 
 export {
@@ -93,6 +94,7 @@ export function parseCuttingMessagesNew(text) {
 
     // ── Summary messages ────────────────────────────────────────────────────
     if (isSummary) {
+      const totalTreadsQty = extractSummaryTotalTreads(body);
       let blocks = parseSummaryBlocks(body);
       if (blocks.length === 0 && isStructuredSummary) blocks = parseLegacyCuttingSummaryBlocks(body);
 
@@ -111,13 +113,15 @@ export function parseCuttingMessagesNew(text) {
           // In daily summary, treads count as agri — sum them together
           const treadAgri = b.radialsAgriTreads ?? 0;
           const totalAgri = baseAgri != null ? baseAgri + treadAgri : (treadAgri > 0 ? treadAgri : null);
-          // Compute totalRadials only when we have typed LC+HC values
-          const totalRadials = (totalLC !== null && totalHC !== null) ? ((totalLC ?? 0) + (totalHC ?? 0)) : null;
+          // If bare "Radials" label wasn't inferred to a specific type, store in Radials Total column
+          let totalRadials = (totalLC !== null && totalHC !== null) ? ((totalLC ?? 0) + (totalHC ?? 0)) : null;
+          if (totalRadials === null && hasUntypedTotal && inferredType === null && b.radialsTotal != null) {
+            totalRadials = b.radialsTotal;
+          }
           const totalAgriTreads = b.radialsAgriTreads ?? null;
-          // If inference failed, put the untyped value in "Unknown" column as last resort
-          // Don't mark as unresolved if the quantity is 0 — nothing to classify
-          const _unresolved = untypedQty > 0 && (hasUntypedTotal || (b._untypedQty != null && inferredType == null));
-          const totalUnknown = _unresolved ? untypedQty : null;
+          // Only _untypedQty (bare number, no type label) → Unknown column; labeled "Radials" goes to Radials Total
+          const _unresolved = b._untypedQty != null && b._untypedQty > 0 && inferredType === null;
+          const totalUnknown = _unresolved ? b._untypedQty : null;
           const hasAnyValue = totalLC !== null || totalHC !== null || totalAgri !== null || totalAgriTreads !== null || totalRadials !== null || totalUnknown !== null;
           if (!hasAnyValue) {
             // N/A or 0 blocks are expected — no need to log
@@ -125,6 +129,7 @@ export function parseCuttingMessagesNew(text) {
           }
           summaryRecords.push({ date, series, cmNumber: cmLabel, totalLC, totalHC, totalRadials, totalAgri, totalAgriTreads, totalUnknown, _unresolved });
         }
+        if (totalTreadsQty !== null) summaryRecords.push({ date, series, cmNumber: "Total Treads", totalLC: null, totalHC: null, totalRadials: null, totalAgri: totalTreadsQty, totalAgriTreads: null, totalUnknown: null });
         continue;
       }
 
@@ -156,6 +161,7 @@ export function parseCuttingMessagesNew(text) {
           });
         }
       }
+      if (totalTreadsQty !== null) summaryRecords.push({ date, series, cmNumber: "Total Treads", totalLC: null, totalHC: null, totalRadials: null, totalAgri: totalTreadsQty, totalAgriTreads: null, totalUnknown: null });
       continue;
     }
 
@@ -276,6 +282,7 @@ export function parseCuttingMessages(text) {
   const records = [];
   const summaryRecords = [];
   const validationLog = [];
+  const unattributedRecords = []; // "CM-13 Agri Treads" style lines with no machine digit
   let parseOrder = 0;
 
   function pushRecord(row) {
@@ -310,10 +317,15 @@ export function parseCuttingMessages(text) {
         // In daily summary, treads count as agri — sum them together
         const treadAgri = b.radialsAgriTreads ?? 0;
         const totalAgri = baseAgri != null ? baseAgri + treadAgri : (treadAgri > 0 ? treadAgri : null);
-        const totalRadials = (totalLC !== null && totalHC !== null) ? ((totalLC ?? 0) + (totalHC ?? 0)) : null;
+        // If bare "Radials" label wasn't inferred to a specific type, store in Radials Total column
+        let totalRadials = (totalLC !== null && totalHC !== null) ? ((totalLC ?? 0) + (totalHC ?? 0)) : null;
+        if (totalRadials === null && hasUntypedTotal && inferredType === null && b.radialsTotal != null) {
+          totalRadials = b.radialsTotal;
+        }
         const totalAgriTreads = b.radialsAgriTreads ?? null;
-        const _unresolved = untypedQty > 0 && (hasUntypedTotal || (b._untypedQty != null && inferredType == null));
-        const totalUnknown = _unresolved ? untypedQty : null;
+        // Only _untypedQty (bare number, no type label) → Unknown column; labeled "Radials" goes to Radials Total
+        const _unresolved = b._untypedQty != null && b._untypedQty > 0 && inferredType === null;
+        const totalUnknown = _unresolved ? b._untypedQty : null;
         const hasAnyValue = totalLC !== null || totalHC !== null || totalAgri !== null || totalAgriTreads !== null || totalRadials !== null || totalUnknown !== null;
         if (!hasAnyValue && !b._hasMarker) {
           // N/A or 0 blocks are expected — no need to log
@@ -321,6 +333,8 @@ export function parseCuttingMessages(text) {
         }
         summaryRecords.push({ date, series, cmNumber: cmLabel, totalLC, totalHC, totalRadials, totalAgri, totalAgriTreads, totalUnknown, _unresolved });
       }
+      const totalTreadsQty = extractSummaryTotalTreads(body);
+      if (totalTreadsQty !== null) summaryRecords.push({ date, series, cmNumber: "Total Treads", totalLC: null, totalHC: null, totalRadials: null, totalAgri: totalTreadsQty, totalAgriTreads: null, totalUnknown: null });
       continue;
     }
 
@@ -351,6 +365,8 @@ export function parseCuttingMessages(text) {
           totalUnknown: null,
         });
       }
+      const totalTreadsQty = extractSummaryTotalTreads(body);
+      if (totalTreadsQty !== null) summaryRecords.push({ date, series, cmNumber: "Total Treads", totalLC: null, totalHC: null, totalRadials: null, totalAgri: totalTreadsQty, totalAgriTreads: null, totalUnknown: null });
       continue;
     }
 
@@ -399,7 +415,9 @@ export function parseCuttingMessages(text) {
 
       // Phase 1: body-level handlers for parenthesised formats
       // Format D: CM1-(HC)=17 / (LC)=12  (dual-type, may span two lines)
-      const fmtD = /CM\s*(\d)\s*-\s*\(HC\)\s*=?\s*(\d+)[\s\S]*?\(LC\)\s*=?\s*(\d+)/gi;
+      const fmtDCMs = new Set();
+      // [^\n]*? = rest of HC line; (?:\n(?!CM\s*\d)[^\n]*?)? = optional next line only if it doesn't start a new CM entry
+      const fmtD = /CM\s*(\d)\s*-\s*\(HC\)\s*=?\s*(\d+)[^\n]*?(?:\n(?!CM\s*\d)[^\n]*?)?\(LC\)\s*=?\s*(\d+)/gi;
       while ((m = fmtD.exec(intervalBody)) !== null) {
         const cmNum = parseInt(m[1], 10);
         const hc = parseInt(m[2], 10), lc = parseInt(m[3], 10);
@@ -407,12 +425,14 @@ export function parseCuttingMessages(text) {
         if (!isNaN(hc) && hc > 0) row.radialsHC = hc;
         if (!isNaN(lc) && lc > 0) row.radialsLC = lc;
         if ((!isNaN(hc) && hc > 0) || (!isNaN(lc) && lc > 0)) hasIntervalProduction = true;
+        fmtDCMs.add(cmNum);
       }
 
       // Single-(HC) lines
       const fmtHC = /CM\s*(\d)\s*-\s*\(HC\)\s*=?\s*(\d+)/gi;
       while ((m = fmtHC.exec(intervalBody)) !== null) {
         const cmNum = parseInt(m[1], 10);
+        if (fmtDCMs.has(cmNum)) continue;
         const count = parseInt(m[2], 10);
         const row = createRow(cmNum);
         if (!isNaN(count)) row.radialsHC = count;
@@ -423,33 +443,87 @@ export function parseCuttingMessages(text) {
       const fmtLC = /CM\s*(\d)\s*-\s*\(LC\)\s*=?\s*(\d+)/gi;
       while ((m = fmtLC.exec(intervalBody)) !== null) {
         const cmNum = parseInt(m[1], 10);
+        if (fmtDCMs.has(cmNum)) continue;
         const count = parseInt(m[2], 10);
         const row = createRow(cmNum);
         if (!isNaN(count)) row.radialsLC = count;
         if (!isNaN(count) && count > 0) hasIntervalProduction = true;
       }
 
-      // Phase 2: line-by-line for all other formats
+      // Phase 2: line-by-line for all other formats.
+      // Rule: once we see CMX, every subsequent tyre line belongs to CMX until a new CMY appears.
       const pendingRecords = [];
-      let lastMachineForStandaloneTreads = null;
+      let currentCM = null;
       for (const rawLine of interval.lines) {
         const normalized = normalizeCuttingLine(rawLine);
-        const standaloneTreadCount = parseStandaloneTreadLine(normalized);
-        if (standaloneTreadCount !== null && lastMachineForStandaloneTreads !== null) {
-          const lastParsedLine = pendingRecords[pendingRecords.length - 1];
-          if (lastParsedLine && lastParsedLine[0]?.cmNum === lastMachineForStandaloneTreads) {
-            lastParsedLine.push({ cmNum: lastMachineForStandaloneTreads, column: "radialsAgriTreads", count: standaloneTreadCount });
-          } else {
-            pendingRecords.push([{ cmNum: lastMachineForStandaloneTreads, column: "radialsAgriTreads", count: standaloneTreadCount }]);
+
+        // Machine line → parse it and update the current CM block
+        if (classifyLine(rawLine) === "machine_line") {
+          const parsed = parseMachineLine(normalized);
+          if (parsed.length === 0) continue;
+          pendingRecords.push(parsed);
+          currentCM = parsed[0].cmNum;
+          continue;
+        }
+
+        // Ambiguous CM line: "CM-{count} {type}" with no machine digit (e.g. "CM-13 Agri Treads")
+        const ambiguousMatch = normalized.match(/^CM\s*-\s*(\d+)\s+([A-Za-z][A-Za-z. ()]*?)\s*$/i);
+        if (ambiguousMatch) {
+          const count = parseInt(ambiguousMatch[1], 10);
+          const col = mapTyreType(ambiguousMatch[2]);
+          if (!isNaN(count) && col !== "unknown_type") {
+            unattributedRecords.push({
+              date, col, count, rawType: ambiguousMatch[2].trim(),
+              startTime, finishTime, series, rawMessage: intervalRawMessage,
+            });
+            hasIntervalProduction = true;
           }
           continue;
         }
-        if (classifyLine(rawLine) !== "machine_line") continue;
-        const parsed = parseMachineLine(normalized);
-        if (parsed.length === 0) continue;
-        pendingRecords.push(parsed);
-        if (parsed.some((p) => p.count !== null && p.column !== "")) {
-          lastMachineForStandaloneTreads = parsed[0].cmNum;
+
+        // Not a machine line and no CM seen yet — skip
+        if (currentCM === null) continue;
+
+        // Standalone tread count (bare number on its own line)
+        const standaloneTreadCount = parseStandaloneTreadLine(normalized);
+        if (standaloneTreadCount !== null) {
+          const lastParsedLine = pendingRecords[pendingRecords.length - 1];
+          if (lastParsedLine && lastParsedLine[0]?.cmNum === currentCM) {
+            lastParsedLine.push({ cmNum: currentCM, column: "radialsAgriTreads", count: standaloneTreadCount });
+          } else {
+            pendingRecords.push([{ cmNum: currentCM, column: "radialsAgriTreads", count: standaloneTreadCount }]);
+          }
+          continue;
+        }
+
+        // General continuation: extract (type, count) in any format.
+        // Covers: TYPE=COUNT, (TYPE)=COUNT, -TYPE=COUNT, .TYPE=COUNT,
+        //         =COUNT TYPE, COUNT TYPE — regardless of separators or parens.
+        let contRawType = null, contCount = null;
+        let mc;
+        // TYPE = COUNT with optional leading separator and optional trailing qualifier
+        mc = normalized.match(/^[-./=]?\s*\(?([A-Za-z][A-Za-z. ]*?)\)?\s*=\s*(\d+)\s*(\([A-Za-z][A-Za-z. ]*\))?\s*$/i);
+        if (mc) { contRawType = mc[3] ? `${mc[1]} ${mc[3]}` : mc[1]; contCount = parseInt(mc[2], 10); }
+        // = COUNT TYPE
+        if (!mc) {
+          mc = normalized.match(/^=\s*(\d+)\s+([A-Za-z][A-Za-z. ()]*?)\s*$/i);
+          if (mc) { contRawType = mc[2]; contCount = parseInt(mc[1], 10); }
+        }
+        // COUNT TYPE (bare)
+        if (!mc) {
+          mc = normalized.match(/^(\d+)\s+([A-Za-z][A-Za-z. ()]*?)\s*$/i);
+          if (mc) { contRawType = mc[2]; contCount = parseInt(mc[1], 10); }
+        }
+        if (mc && contRawType !== null && !isNaN(contCount)) {
+          const col = mapTyreType(contRawType);
+          if (col !== "unknown_type") {
+            const lastParsedLine = pendingRecords[pendingRecords.length - 1];
+            if (lastParsedLine && lastParsedLine[0]?.cmNum === currentCM) {
+              lastParsedLine.push({ cmNum: currentCM, column: col, count: contCount });
+            } else {
+              pendingRecords.push([{ cmNum: currentCM, column: col, count: contCount }]);
+            }
+          }
         }
       }
 
@@ -465,7 +539,17 @@ export function parseCuttingMessages(text) {
         }
       }
 
+      // Suppress blank status-only rows for CMs that have real tyre production
+      const cmsWithRealData = new Set();
       for (const parsedLine of pendingRecords) {
+        if (parsedLine.some(p => p.count != null && p.column && p.column !== "" && p.column !== "unknown_type")) {
+          cmsWithRealData.add(parsedLine[0].cmNum);
+        }
+      }
+
+      for (const parsedLine of pendingRecords) {
+        const isPureStatus = parsedLine.every(p => p.isStatus && p.count == null);
+        if (isPureStatus && cmsWithRealData.has(parsedLine[0].cmNum)) continue;
         const cm = parsedLine[0].cmNum;
         const row = createRow(cm);
         const cmCols = columnsByCm.get(cm);
@@ -502,6 +586,57 @@ export function parseCuttingMessages(text) {
 
       sortRowsByCm(intervalRows);
       for (const row of intervalRows) pushRecord(row);
+    }
+  }
+
+  // Resolve ambiguous CM lines (e.g. "CM-13 Agri Treads" with no machine digit)
+  {
+    const dk = (d) => d ? `${d.year}-${String(d.month).padStart(2,"0")}-${String(d.day).padStart(2,"0")}` : "";
+    for (const u of unattributedRecords) {
+      const dateStr = dk(u.date);
+      // Find which CMs have data in u.col for this date (across all intervals)
+      const cmsWithCol = new Set();
+      for (const r of records) {
+        if (dk(r.date) !== dateStr) continue;
+        if (r[u.col] != null) {
+          const m = String(r.cmNumber ?? "").match(/(\d+)/);
+          if (m) cmsWithCol.add(parseInt(m[1], 10));
+        }
+      }
+
+      if (cmsWithCol.size === 1) {
+        // Exactly one CM does this tyre type today → attribute to it
+        const cmNum = [...cmsWithCol][0];
+        const cmLabel = `CM - ${cmNum}`;
+        const existing = records.find(r =>
+          dk(r.date) === dateStr && r.cmNumber === cmLabel &&
+          r.startTime === u.startTime && r.finishTime === u.finishTime
+        );
+        if (existing) {
+          existing[u.col] = (existing[u.col] ?? 0) + u.count;
+        } else {
+          const row = makeMachineRow(u.date, cmLabel, u.series, u.startTime, u.finishTime, "", u.rawMessage);
+          row[u.col] = u.count;
+          records.push(row);
+        }
+      } else {
+        // Can't infer → mark ALL rows of this interval orange, lose the qty, log it
+        for (const r of records) {
+          if (dk(r.date) === dateStr && r.startTime === u.startTime && r.finishTime === u.finishTime) {
+            r._ambiguousLine = true;
+          }
+        }
+        const candidates = cmsWithCol.size === 0 ? "none" : [...cmsWithCol].map(n => `CM${n}`).join(", ");
+        validationLog.push({
+          date: u.date,
+          time: `${formatTime(u.startTime)}-${formatTime(u.finishTime)}`,
+          messageType: "hourly",
+          cutter: "CM - ?",
+          issue: `Ambiguous CM line — could not infer machine for "${u.rawType}" (${u.count} tyres). Candidates: ${candidates}`,
+          action: "Rows coloured orange. Quantity lost — assign manually.",
+          rawText: u.rawMessage,
+        });
+      }
     }
   }
 
