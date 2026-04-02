@@ -24,6 +24,16 @@ const __dirname = dirname(fileURLToPath(import.meta.url));
 const CHAT_PATH = resolve(__dirname, "../WhatsApp_chats/WhatsApp Chat with Blue pyramid recycling- Cut Tyres.txt");
 const OUT_PATH = resolve(__dirname, "../BPR_Cutting_Data_FIXED.xlsx");
 
+function groupRecordsByMonth(records) {
+  const grouped = {};
+  for (const record of records) {
+    const key = monthKey(record.date);
+    if (!grouped[key]) grouped[key] = [];
+    grouped[key].push(record);
+  }
+  return grouped;
+}
+
 // ─── Main ─────────────────────────────────────────────────────────────────────
 
 console.log("Reading chat file…");
@@ -34,12 +44,7 @@ const { records } = parseCuttingMessages(chatText);
 console.log(`  → ${records.length} records parsed`);
 
 // Group by month
-const byMonth = {};
-for (const r of records) {
-  const key = monthKey(r.date);
-  if (!byMonth[key]) byMonth[key] = [];
-  byMonth[key].push(r);
-}
+const byMonth = groupRecordsByMonth(records);
 
 const sortedKeys = Object.keys(byMonth).sort();
 console.log(`  → ${sortedKeys.length} months: ${sortedKeys.map(monthLabel).join(", ")}`);
@@ -58,6 +63,7 @@ for (const r of jan2026) {
   const d = dateToStr(r.date);
   janByDate[d] = (janByDate[d] || 0) + 1;
 }
+
 console.log("\nJan 2026 rows per date (fixed):");
 for (const [d, c] of Object.entries(janByDate).sort()) {
   console.log(`  ${d}: ${c}`);
@@ -66,10 +72,13 @@ for (const [d, c] of Object.entries(janByDate).sort()) {
 // ─── Write Excel ──────────────────────────────────────────────────────────────
 console.log("\nWriting Excel…");
 const wb = new ExcelJS.Workbook();
+
 for (const key of sortedKeys) {
   const rows = cuttingSheetRows(byMonth[key]);
   const ws = wb.addWorksheet(monthLabel(key));
+
   rows.forEach((row) => ws.addRow(row));
+
   for (const merge of CUTTING_GROUP_MERGES) {
     ws.mergeCells(
       merge.s.r + 1,
