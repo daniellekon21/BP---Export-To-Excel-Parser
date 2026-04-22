@@ -36,6 +36,16 @@ export {
 } from "./cutting/cuttingUtils.js";
 export { flushCutterBlock, mapTyreTypeNew, mapTreadTypeNew } from "./cutting/cuttingUtils.js";
 
+// ─── Shared separator token ───────────────────────────────────────────────────
+// Accepts `:`, `-`, `=`, and en/em dash variants as a label/value separator,
+// with optional surrounding whitespace. Used by every labeled-line regex in
+// the new-format parser so operators can type any of these interchangeably.
+const SEP = "\\s*[-–—:=]\\s*";
+
+// Block-style new format: a line that is exactly "CM - N" (or ":" / "=").
+const BLOCK_CM_HEADER_RE = new RegExp(`^\\s*\\*?\\s*CM${SEP}(\\d+)\\s*\\*?\\s*$`, "im");
+const BLOCK_CM_HEADER_LINE_RE = new RegExp(`^\\s*\\*?\\s*CM${SEP}(\\d+)\\s*\\*?\\s*$`, "i");
+
 function cmSortNumber(row) {
   const m = String(row?.cmNumber ?? "").match(/(\d+)/);
   if (!m) return Number.MAX_SAFE_INTEGER;
@@ -83,7 +93,9 @@ export function parseCuttingMessagesNew(text) {
     const isDailySummary     = /daily summary/i.test(body);
     const isStructuredSummary = /cutting summary/i.test(body) || (!isDailySummary && /\bsummary\b/i.test(body));
     const isSummary = isStructuredSummary || isDailySummary;
-    const isHourly  = !isSummary && /cutter\s+\d/i.test(body);
+    const hasBlockHeader  = !isSummary && BLOCK_CM_HEADER_RE.test(body);
+    const hasCutterHeader = !isSummary && /cutter\s+\d/i.test(body);
+    const isHourly  = hasBlockHeader || hasCutterHeader;
     if (!isSummary && !isHourly) continue;
 
     const date = extractBodyDate(body) ?? msg.tsDate;
@@ -166,96 +178,31 @@ export function parseCuttingMessagesNew(text) {
     }
 
     // ── Hourly messages ─────────────────────────────────────────────────────
+    // Extract time range: accepts "Time: HH:MM-HH:MM" (cutter-style) or a
+    // standalone "HH:MM-HH:MM" line (block-style).
     let startTime = null, finishTime = null;
-    const slotMatch = body.match(/\*?time\*?\s*:\s*(\d{1,2}:\d{2})\s*[-–]\s*(\d{1,2}:\d{2})/i);
+    const slotMatch = body.match(new RegExp(`\\*?time\\*?${SEP}(\\d{1,2}:\\d{2})\\s*[-–]\\s*(\\d{1,2}:\\d{2})`, "i"));
     if (slotMatch) { startTime = parseTime(slotMatch[1]); finishTime = parseTime(slotMatch[2]); }
+    if (!startTime) {
+      for (const rawLine of body.split("\n")) {
+        const m = rawLine.trim().match(/^(\d{1,2}:\d{2})\s*[-–]\s*(\d{1,2}:\d{2})\s*$/);
+        if (m) { startTime = parseTime(m[1]); finishTime = parseTime(m[2]); break; }
+      }
+    }
     const timeStr = (startTime && finishTime) ? `${formatTime(startTime)}-${formatTime(finishTime)}` : "";
 
-    const seenCutters     = new Set();
-    const producedCutters = new Set();
-    const messageRows     = [];
-    let currentBlock = null;
-    let lastQtyField = null;
-    let rowOrderInText = 0;
-
-    function flushBlock() {
-      if (!currentBlock) return;
-      const { cmNum, operator, assistant, tyreType, tyreCount, treadType, treadCount } = currentBlock;
-      const opStr = [operator, assistant].filter(Boolean).join(" / ");
-
-      if (tyreType !== null && !isValidNewType(tyreType)) {
-        validationLog.push({ date: dateStr, time: timeStr, messageType: "Hourly", cutter: `CM - ${cmNum}`, issue: `Invalid tyre type "${tyreType}"`, action: "Block skipped — only LC, HC, Agri are valid", rawText: body });
-        return;
-      }
-      if (treadType !== null && !isValidNewType(treadType)) {
-        validationLog.push({ date: dateStr, time: timeStr, messageType: "Hourly", cutter: `CM - ${cmNum}`, issue: `Invalid tread type "${treadType}"`, action: "Block skipped — only LC, HC, Agri are valid", rawText: body });
-        return;
-      }
-      if (tyreType === null) return;
-      if (tyreCount === null) {
-        validationLog.push({ date: dateStr, time: timeStr, messageType: "Hourly", cutter: `CM - ${cmNum}`, issue: "Tyre type present but quantity missing", action: "Block skipped", rawText: body });
-        return;
-      }
-
-      const row = makeMachineRow(date, `CM - ${cmNum}`, series, startTime, finishTime, opStr, body);
-      const tyreCol = mapTyreTypeNew(tyreType);
-      if (tyreCol !== "unknown_type") row[tyreCol] = (row[tyreCol] ?? 0) + tyreCount;
-
-      if (treadType === null) {
-        validationLog.push({ date: dateStr, time: timeStr, messageType: "Hourly", cutter: `CM - ${cmNum}`, issue: "Tread section missing", action: "Partial parse — tyre data written, tread omitted", rawText: body });
-      } else if (treadCount === null) {
-        validationLog.push({ date: dateStr, time: timeStr, messageType: "Hourly", cutter: `CM - ${cmNum}`, issue: "Tread type present but quantity missing", action: "Tread omitted", rawText: body });
-      } else {
-        const treadCol = mapTreadTypeNew(treadType);
-        if (treadCol !== "unknown_type") row[treadCol] = (row[treadCol] ?? 0) + treadCount;
-      }
-
-      row._rowOrderInText = rowOrderInText++;
-      messageRows.push(row);
-      producedCutters.add(cmNum);
-    }
-
-    for (const rawLine of body.split("\n")) {
-      const line = rawLine.trim();
-      if (!line) continue;
-
-      const cutterMatch = line.match(/^\*?cutter\s+(\d+)\*?/i);
-      if (cutterMatch) {
-        flushBlock();
-        const cmNum = parseInt(cutterMatch[1], 10);
-        if (seenCutters.has(cmNum)) {
-          validationLog.push({ date: dateStr, time: timeStr, messageType: "Hourly", cutter: `CM - ${cmNum}`, issue: `Duplicate cutter CM - ${cmNum} in same message`, action: "Kept all occurrences", rawText: body });
-        }
-        seenCutters.add(cmNum);
-        currentBlock = { cmNum, operator: "", assistant: "", tyreType: null, tyreCount: null, treadType: null, treadCount: null };
-        lastQtyField = null;
-        continue;
-      }
-
-      if (!currentBlock) continue;
-
-      const m_op   = line.match(/^operator\s*:\s*(.*)/i);
-      const m_ast  = line.match(/^assistant\s*:\s*(.*)/i);
-      const m_tyre = line.match(/^t[iy]re\s+type\s*:\s*(.*)/i);
-      const m_trd  = line.match(/^tread\s+type\s*:\s*(.*)/i);
-      const m_qty  = line.match(/^quantit[yi]e?s?\s*:\s*(\d+)/i);
-
-      if (m_op)   { currentBlock.operator  = m_op[1].trim();  continue; }
-      if (m_ast)  { currentBlock.assistant = m_ast[1].trim(); continue; }
-      if (m_tyre) { currentBlock.tyreType  = m_tyre[1].trim(); lastQtyField = "tyre";  continue; }
-      if (m_trd)  { currentBlock.treadType = m_trd[1].trim();  lastQtyField = "tread"; continue; }
-      if (m_qty) {
-        const qty = parseInt(m_qty[1], 10);
-        if (lastQtyField === "tyre")  currentBlock.tyreCount  = qty;
-        if (lastQtyField === "tread") currentBlock.treadCount = qty;
-      }
-    }
-    flushBlock();
+    // Dispatch to the right sub-parser. Block-style ("CM - 1" header) wins if
+    // both headers appear in the same body (unlikely but safe).
+    const ctx = { body, date, series, startTime, finishTime, dateStr, timeStr, validationLog };
+    const { messageRows, producedCutters, nextRowOrder } = hasBlockHeader
+      ? parseMessageBlockStyle(ctx)
+      : parseMessageCutterStyle(ctx);
 
     if (producedCutters.size > 0) {
+      let rowOrderInText = nextRowOrder;
       for (const n of [1, 2, 3]) {
         if (!producedCutters.has(n)) {
-          const p = makeMachineRow(date, `CM - ${n}`, series, startTime, finishTime, "", body);
+          const p = makeMachineRow(date, `CM - ${n}`, series, startTime, finishTime, "", body, "");
           p._syntheticPlaceholder = true;
           p._rowOrderInText = rowOrderInText++;
           messageRows.push(p);
@@ -268,6 +215,196 @@ export function parseCuttingMessagesNew(text) {
   }
 
   return { records, summaryRecords, validationLog };
+}
+
+// ─── Cutter-style sub-parser ─────────────────────────────────────────────────
+// Handles the existing structured format:
+//   *Cutter 1*
+//   Operator: Jane
+//   Tyre Type: LC     Quantity: 45
+//   Tread Type: HC    Quantity: 12
+// All labeled separators accept `:`, `-`, or `=` (shared SEP token).
+function parseMessageCutterStyle({ body, date, series, startTime, finishTime, dateStr, timeStr, validationLog }) {
+  const OP_RE   = new RegExp(`^operator${SEP}(.*)`, "i");
+  const AST_RE  = new RegExp(`^assistant${SEP}(.*)`, "i");
+  const TYRE_RE = new RegExp(`^t[iy]re\\s+type${SEP}(.*)`, "i");
+  const TRD_RE  = new RegExp(`^tread\\s+type${SEP}(.*)`, "i");
+  const QTY_RE  = new RegExp(`^quantit[yi]e?s?${SEP}(\\d+)`, "i");
+
+  const seenCutters     = new Set();
+  const producedCutters = new Set();
+  const messageRows     = [];
+  let currentBlock = null;
+  let lastQtyField = null;
+  let rowOrderInText = 0;
+
+  function flushBlock() {
+    if (!currentBlock) return;
+    const { cmNum, operator, assistant, tyreType, tyreCount, treadType, treadCount } = currentBlock;
+
+    if (tyreType !== null && !isValidNewType(tyreType)) {
+      validationLog.push({ date: dateStr, time: timeStr, messageType: "Hourly", cutter: `CM - ${cmNum}`, issue: `Invalid tyre type "${tyreType}"`, action: "Block skipped — only LC, HC, Agri are valid", rawText: body });
+      return;
+    }
+    if (treadType !== null && !isValidNewType(treadType)) {
+      validationLog.push({ date: dateStr, time: timeStr, messageType: "Hourly", cutter: `CM - ${cmNum}`, issue: `Invalid tread type "${treadType}"`, action: "Block skipped — only LC, HC, Agri are valid", rawText: body });
+      return;
+    }
+    if (tyreType === null) return;
+    if (tyreCount === null) {
+      validationLog.push({ date: dateStr, time: timeStr, messageType: "Hourly", cutter: `CM - ${cmNum}`, issue: "Tyre type present but quantity missing", action: "Block skipped", rawText: body });
+      return;
+    }
+
+    const row = makeMachineRow(date, `CM - ${cmNum}`, series, startTime, finishTime, operator || "", body, assistant || "");
+    const tyreCol = mapTyreTypeNew(tyreType);
+    if (tyreCol !== "unknown_type") row[tyreCol] = (row[tyreCol] ?? 0) + tyreCount;
+
+    if (treadType === null) {
+      validationLog.push({ date: dateStr, time: timeStr, messageType: "Hourly", cutter: `CM - ${cmNum}`, issue: "Tread section missing", action: "Partial parse — tyre data written, tread omitted", rawText: body });
+    } else if (treadCount === null) {
+      validationLog.push({ date: dateStr, time: timeStr, messageType: "Hourly", cutter: `CM - ${cmNum}`, issue: "Tread type present but quantity missing", action: "Tread omitted", rawText: body });
+    } else {
+      const treadCol = mapTreadTypeNew(treadType);
+      if (treadCol !== "unknown_type") row[treadCol] = (row[treadCol] ?? 0) + treadCount;
+    }
+
+    row._rowOrderInText = rowOrderInText++;
+    messageRows.push(row);
+    producedCutters.add(cmNum);
+  }
+
+  for (const rawLine of body.split("\n")) {
+    const line = rawLine.trim();
+    if (!line) continue;
+
+    const cutterMatch = line.match(/^\*?cutter\s+(\d+)\*?/i);
+    if (cutterMatch) {
+      flushBlock();
+      const cmNum = parseInt(cutterMatch[1], 10);
+      if (seenCutters.has(cmNum)) {
+        validationLog.push({ date: dateStr, time: timeStr, messageType: "Hourly", cutter: `CM - ${cmNum}`, issue: `Duplicate cutter CM - ${cmNum} in same message`, action: "Kept all occurrences", rawText: body });
+      }
+      seenCutters.add(cmNum);
+      currentBlock = { cmNum, operator: "", assistant: "", tyreType: null, tyreCount: null, treadType: null, treadCount: null };
+      lastQtyField = null;
+      continue;
+    }
+
+    if (!currentBlock) continue;
+
+    const m_op   = line.match(OP_RE);
+    const m_ast  = line.match(AST_RE);
+    const m_tyre = line.match(TYRE_RE);
+    const m_trd  = line.match(TRD_RE);
+    const m_qty  = line.match(QTY_RE);
+
+    if (m_op)   { currentBlock.operator  = m_op[1].trim();  continue; }
+    if (m_ast)  { currentBlock.assistant = m_ast[1].trim(); continue; }
+    if (m_tyre) { currentBlock.tyreType  = m_tyre[1].trim(); lastQtyField = "tyre";  continue; }
+    if (m_trd)  { currentBlock.treadType = m_trd[1].trim();  lastQtyField = "tread"; continue; }
+    if (m_qty) {
+      const qty = parseInt(m_qty[1], 10);
+      if (lastQtyField === "tyre")  currentBlock.tyreCount  = qty;
+      if (lastQtyField === "tread") currentBlock.treadCount = qty;
+    }
+  }
+  flushBlock();
+
+  return { messageRows, producedCutters, nextRowOrder: rowOrderInText };
+}
+
+// ─── Block-style sub-parser ──────────────────────────────────────────────────
+// Handles the newer, simpler block format:
+//   CM - 1
+//   Operator - John
+//   Assistant - Jane
+//   LC - 18
+//   HC - 5
+//   Treads - 12
+// All separators (`:`, `-`, `=`) are interchangeable. Tyre-type resolution
+// reuses the old-format mapTyreType() which recognizes LC/HC/Agri/4x4/nylons
+// plus aliases like "light", "heavy", "radial", etc. Bare "Treads" is always
+// routed to radialsAgriTreads regardless of mapTyreType's default behavior.
+function parseMessageBlockStyle({ body, date, series, startTime, finishTime, dateStr, timeStr, validationLog }) {
+  const OP_RE   = new RegExp(`^operator${SEP}(.*)`, "i");
+  const AST_RE  = new RegExp(`^assistant${SEP}(.*)`, "i");
+  const TYPE_QTY_RE = new RegExp(`^(.+?)${SEP}(\\d+)\\s*$`);
+
+  const blocks = new Map(); // cmNum → { operator, assistant, assignments: [{col, qty, rawType}] }
+  let currentCm = null;
+
+  for (const rawLine of body.split("\n")) {
+    const line = rawLine.trim();
+    if (!line) continue;
+
+    const cmMatch = line.match(BLOCK_CM_HEADER_LINE_RE);
+    if (cmMatch) {
+      currentCm = parseInt(cmMatch[1], 10);
+      if (!blocks.has(currentCm)) {
+        blocks.set(currentCm, { operator: "", assistant: "", assignments: [] });
+      }
+      continue;
+    }
+    if (currentCm === null) continue;
+
+    // Strip surrounding bold markers before matching labels.
+    const clean = line.replace(/^\*+|\*+$/g, "").trim();
+    if (!clean) continue;
+
+    const mOp = clean.match(OP_RE);
+    if (mOp) { blocks.get(currentCm).operator = mOp[1].trim(); continue; }
+
+    const mAst = clean.match(AST_RE);
+    if (mAst) { blocks.get(currentCm).assistant = mAst[1].trim(); continue; }
+
+    const mTq = clean.match(TYPE_QTY_RE);
+    if (!mTq) continue;
+    const rawType = mTq[1].trim();
+    const qty = parseInt(mTq[2], 10);
+    if (!Number.isFinite(qty) || !rawType) continue;
+
+    // Bare "Treads" → always radialsAgriTreads (per requirement).
+    let col;
+    if (/^th?reads?$/i.test(rawType)) {
+      col = "radialsAgriTreads";
+    } else {
+      col = mapTyreType(rawType);
+    }
+    blocks.get(currentCm).assignments.push({ col, qty, rawType });
+  }
+
+  const messageRows = [];
+  const producedCutters = new Set();
+  let rowOrderInText = 0;
+
+  for (const [cmNum, block] of blocks) {
+    const row = makeMachineRow(date, `CM - ${cmNum}`, series, startTime, finishTime, block.operator || "", body, block.assistant || "");
+    let unresolvedCount = 0;
+    for (const a of block.assignments) {
+      if (a.col === "unknown_type" || !a.col) {
+        unresolvedCount += 1;
+        row._unresolvedType = true;
+        validationLog.push({
+          date: dateStr,
+          time: timeStr,
+          messageType: "Hourly",
+          cutter: `CM - ${cmNum}`,
+          issue: `Unrecognized tyre type "${a.rawType}" (${a.qty})`,
+          action: "Quantity not assigned — row flagged",
+          rawText: body,
+        });
+        continue;
+      }
+      if (row[a.col] != null) row._duplicateTyreType = true;
+      row[a.col] = (row[a.col] ?? 0) + a.qty;
+    }
+    row._rowOrderInText = rowOrderInText++;
+    messageRows.push(row);
+    producedCutters.add(cmNum);
+  }
+
+  return { messageRows, producedCutters, nextRowOrder: rowOrderInText };
 }
 
 // ─── Old-Format Parser ────────────────────────────────────────────────────────

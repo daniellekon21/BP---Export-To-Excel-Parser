@@ -280,9 +280,9 @@ export function extractSummaryTotalTreads(body) {
 // ─── Machine Row Factory ──────────────────────────────────────────────────────
 
 // Create a blank machine row — one per machine per timeframe.
-export function makeMachineRow(date, cmNumber, series, startTime, finishTime, operator = "", rawMessage = "") {
+export function makeMachineRow(date, cmNumber, series, startTime, finishTime, operator = "", rawMessage = "", cuttingAssistant = "") {
   return {
-    date, cmNumber, series, startTime, finishTime, operator, rawMessage,
+    date, cmNumber, series, startTime, finishTime, operator, cuttingAssistant, rawMessage,
     radialsLC: null,
     radialsHC: null,
     radialsAgri: null,

@@ -1,0 +1,79 @@
+2026/03/06, 14:30 - QA Bot: 06/03/2026
+14:00-15:00
+
+CM - 1
+Operator - John
+Assistant - Jane
+LC - 18
+HC - 5
+Treads - 12
+
+CM - 2
+Operator - Menzi
+Assistant - Philani
+Agri - 6
+Treads - 4
+
+CM - 3
+Operator - Bheki
+Assistant - Sanele
+LC - 10
+HC - 3
+Treads - 8
+
+2026/03/06, 15:45 - QA Bot: 06/03/2026
+15:00-16:00
+
+CM - 1
+Operator: Sipho
+Assistant: Andile
+LC: 20
+Treads: 14
+
+CM - 2
+Operator = Menzi
+Assistant = Philani
+HC = 8
+Agri = 4
+Treads = 5
+
+2026/03/06, 16:55 - QA Bot: 06/03/2026
+16:00-17:00
+
+CM - 1
+Operator - Sipho
+Assistant - Andile
+Agri - 9
+Treads - 7
+
+CM - 2
+Operator - Menzi
+Assistant - Philani
+Nylon - 3
+
+CM - 3
+Operator - Bheki
+Assistant - Sanele
+LC - 12
+HC - 4
+
+2026/03/07, 09:02 - QA Bot: 09:00-10:00
+
+CM - 1
+Operator - Sipho
+Assistant - Andile
+LC - 22
+HC - 6
+Treads - 10
+
+CM - 2
+Operator - Menzi
+Assistant - Philani
+HC - 9
+Treads - 6
+
+CM - 3
+Operator - Bheki
+Assistant - Sanele
+Agri - 7
+Treads - 5

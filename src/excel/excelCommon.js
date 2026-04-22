@@ -21,6 +21,7 @@ export function baseStyles() {
   const textDark = "FF0F172A";
   const thinBlack = { style: "thin", color: { argb: "FF000000" } };
   const mediumBlack = { style: "medium", color: { argb: "FF000000" } };
+  const thickBlack = { style: "thick", color: { argb: "FF000000" } };
 
   const baseBorder = {
     top: { style: "thin", color: { argb: "FFD1D5DB" } },
@@ -29,7 +30,7 @@ export function baseStyles() {
     right: { style: "thin", color: { argb: "FFD1D5DB" } },
   };
 
-  return { brandBlue, brandBlueLight, textWhite, textDark, thinBlack, mediumBlack, baseBorder };
+  return { brandBlue, brandBlueLight, textWhite, textDark, thinBlack, mediumBlack, thickBlack, baseBorder };
 }
 
 export function styleHeaderRow(row, styles, isLight = false) {

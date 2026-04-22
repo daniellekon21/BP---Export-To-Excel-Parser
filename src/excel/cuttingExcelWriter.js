@@ -68,14 +68,14 @@ function styleCuttingHeaderRows(ws, styles) {
   const cuttingHeaderYellow = "FFF7D447";
 
   const colorForColumn = (col) => {
-    if (col >= 7 && col <= 10) return cuttingHeaderOrange;
-    if (col === 11) return cuttingHeaderYellow;
+    if (col >= 8 && col <= 11) return cuttingHeaderOrange;
+    if (col === 12) return cuttingHeaderYellow;
     return cuttingHeaderGray;
   };
 
   for (const rowIndex of [1, 2]) {
     const row = ws.getRow(rowIndex);
-    for (let c = 1; c <= 12; c += 1) {
+    for (let c = 1; c <= 13; c += 1) {
       const cell = row.getCell(c);
       cell.font = { ...(cell.font || {}), bold: true, color: { argb: styles.textDark } };
       cell.fill = { type: "pattern", pattern: "solid", fgColor: { argb: colorForColumn(c) } };
@@ -90,10 +90,10 @@ function styleCuttingHeaderRows(ws, styles) {
   }
 
   const groups = [
-    { start: 1, end: 6 },
-    { start: 7, end: 10 },
-    { start: 11, end: 11 },
+    { start: 1, end: 7 },
+    { start: 8, end: 11 },
     { start: 12, end: 12 },
+    { start: 13, end: 13 },
   ];
   const topRow = ws.getRow(1);
   const bottomRow = ws.getRow(2);
@@ -113,7 +113,7 @@ function styleCuttingHeaderRows(ws, styles) {
 
 function styleTotalsRow(row, styles) {
   const cuttingHeaderGray = "FFC2C8D6";
-  for (let c = 1; c <= 12; c += 1) {
+  for (let c = 1; c <= 13; c += 1) {
     const cell = row.getCell(c);
     cell.font = { ...(cell.font || {}), bold: true, color: { argb: styles.textDark } };
     cell.fill = { type: "pattern", pattern: "solid", fgColor: { argb: cuttingHeaderGray } };
@@ -121,13 +121,13 @@ function styleTotalsRow(row, styles) {
     cell.alignment = { vertical: "middle", horizontal: "center", wrapText: true };
   }
 
-  for (let c = 1; c <= 12; c += 1) {
+  for (let c = 1; c <= 13; c += 1) {
     const cell = row.getCell(c);
     const border = { ...(cell.border || {}) };
     border.top = styles.mediumBlack;
     border.bottom = styles.mediumBlack;
     if (c === 1) border.left = styles.mediumBlack;
-    if (c === 12) border.right = styles.mediumBlack;
+    if (c === 13) border.right = styles.mediumBlack;
     cell.border = border;
   }
 }
@@ -232,7 +232,7 @@ export async function downloadCuttingWorkbook(records, filename, extras = {}) {
     let hasCuttingTotalsRow = false;
 
     if (rows.length >= 2) {
-      rows.push(["TOTALS", "", "", "", "", "", "", "", "", "", "", ""]);
+      rows.push(["TOTALS", "", "", "", "", "", "", "", "", "", "", "", ""]);
       hasCuttingTotalsRow = true;
     }
 
@@ -274,12 +274,12 @@ export async function downloadCuttingWorkbook(records, filename, extras = {}) {
     ws.views = [{ state: "frozen", ySplit: 2 }];
     ws.autoFilter = {
       from: { row: 2, column: 1 },
-      to: { row: 2, column: 12 },
+      to: { row: 2, column: 13 },
     };
-    applyColumnWidths(ws, [13, 16, 14, 26, 10, 10, 16, 16, 14, 14, 16, 65]);
+    applyColumnWidths(ws, [13, 16, 14, 26, 26, 10, 10, 16, 16, 14, 14, 16, 65]);
 
     if (totalsRowIndex) {
-      for (let col = 7; col <= 11; col += 1) {
+      for (let col = 8; col <= 12; col += 1) {
         const totalCell = ws.getCell(totalsRowIndex, col);
         if (monthRecords.length > 0) {
           totalCell.value = {
@@ -289,20 +289,12 @@ export async function downloadCuttingWorkbook(records, filename, extras = {}) {
           totalCell.value = 0;
         }
       }
-      styleTotalsRow(ws.getRow(totalsRowIndex), styles);
-      // Thick frame around TOTALS row
-      styleThickFrame(ws, totalsRowIndex, totalsRowIndex, 1, 12, styles);
-    }
-
-    // Thick frame around the cutting data table (headers + data rows)
-    if (monthRecords.length > 0) {
-      styleThickFrame(ws, 1, dataEndRow, 1, 12, styles);
     }
 
     if (monthSummary.length > 0) {
       const summaryTitleRow = rows.findIndex((r) => Array.isArray(r) && r[0] === "Cutting Summary") + 1;
       if (summaryTitleRow > 0) {
-        styleBodyRows(ws, 3, summaryTitleRow - 2, styles.baseBorder, 12);
+        styleBodyRows(ws, 3, summaryTitleRow - 2, styles.baseBorder, 13);
         styleDailySummaryHeaderRows(ws.getRow(summaryTitleRow), ws.getRow(summaryTitleRow + 1), styles);
         styleBodyRows(ws, summaryTitleRow + 2, ws.rowCount, styles.baseBorder, 7);
         collapseRepeatedDates(ws, 3, summaryTitleRow - 2);
@@ -311,12 +303,12 @@ export async function downloadCuttingWorkbook(records, filename, extras = {}) {
         styleFirstDateRows(ws, summaryTitleRow + 2, ws.rowCount);
         styleThickFrame(ws, summaryTitleRow, ws.rowCount, 1, 7, styles);
       } else {
-        styleBodyRows(ws, 3, ws.rowCount, styles.baseBorder, 12);
+        styleBodyRows(ws, 3, ws.rowCount, styles.baseBorder, 13);
         collapseRepeatedDates(ws, 3, ws.rowCount);
         styleFirstDateRows(ws, 3, ws.rowCount);
       }
     } else {
-      styleBodyRows(ws, 3, ws.rowCount, styles.baseBorder, 12);
+      styleBodyRows(ws, 3, ws.rowCount, styles.baseBorder, 13);
       collapseRepeatedDates(ws, 3, ws.rowCount);
       styleFirstDateRows(ws, 3, ws.rowCount);
     }
@@ -326,7 +318,7 @@ export async function downloadCuttingWorkbook(records, filename, extras = {}) {
     for (const idx of inferredIndices) {
       const excelRow = dataStartRow + idx;
       const row = ws.getRow(excelRow);
-      for (let c = 1; c <= 12; c += 1) {
+      for (let c = 1; c <= 13; c += 1) {
         const cell = row.getCell(c);
         cell.fill = { type: "pattern", pattern: "solid", fgColor: { argb: lightGreenPastel } };
       }
@@ -338,7 +330,7 @@ export async function downloadCuttingWorkbook(records, filename, extras = {}) {
     for (const idx of unresolvedIndices) {
       const excelRow = dataStartRow + idx;
       const row = ws.getRow(excelRow);
-      for (let c = 1; c <= 12; c += 1) {
+      for (let c = 1; c <= 13; c += 1) {
         const cell = row.getCell(c);
         cell.fill = { type: "pattern", pattern: "solid", fgColor: { argb: lightPinkPastel } };
       }
@@ -349,7 +341,7 @@ export async function downloadCuttingWorkbook(records, filename, extras = {}) {
     for (const idx of ambiguousIndices) {
       const excelRow = dataStartRow + idx;
       const row = ws.getRow(excelRow);
-      for (let c = 1; c <= 12; c += 1) {
+      for (let c = 1; c <= 13; c += 1) {
         row.getCell(c).fill = { type: "pattern", pattern: "solid", fgColor: { argb: lightOrangePastel } };
       }
     }
@@ -360,7 +352,7 @@ export async function downloadCuttingWorkbook(records, filename, extras = {}) {
     for (const idx of duplicateTyreIndices) {
       const excelRow = dataStartRow + idx;
       const row = ws.getRow(excelRow);
-      for (let c = 1; c <= 12; c += 1) {
+      for (let c = 1; c <= 13; c += 1) {
         row.getCell(c).fill = { type: "pattern", pattern: "solid", fgColor: { argb: lightYellowPastel } };
       }
     }
@@ -372,6 +364,15 @@ export async function downloadCuttingWorkbook(records, filename, extras = {}) {
         const cell = row.getCell(c);
         cell.fill = { type: "pattern", pattern: "solid", fgColor: { argb: lightPinkPastel } };
       }
+    }
+
+    if (totalsRowIndex) {
+      styleTotalsRow(ws.getRow(totalsRowIndex), styles);
+      styleThickFrame(ws, totalsRowIndex, totalsRowIndex, 1, 13, styles);
+    }
+
+    if (monthRecords.length > 0) {
+      styleThickFrame(ws, 1, dataEndRow, 1, 13, styles);
     }
   }
 
