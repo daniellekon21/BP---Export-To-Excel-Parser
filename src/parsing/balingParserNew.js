@@ -696,14 +696,6 @@ export function parseBalingMessagesNew(text) {
 
     // New format produced no result → fallback to old format
     const handled = processBalingMessageOldFormat(msg, normalized, result, seenProductionBales);
-    if (handled) {
-      logValidation(result, msg, null, {
-        severity: "INFO",
-        issueType: "PARSER_FALLBACK_USED",
-        problemDescription: "New-format parse produced no result; old format fallback used",
-        sheetTargetAttempted: "",
-      });
-    }
     // handled=false → both parsers found nothing → silent skip
   }
 
@@ -737,12 +729,6 @@ export function parseBalingMessagesOldWithFallback(text) {
     const row = tryParseNewFormatProduction(msg, normalized);
     if (row) {
       warnIfMissingFields(row, result, msg);
-      logValidation(result, msg, row, {
-        severity: "INFO",
-        issueType: "PARSER_FALLBACK_USED",
-        problemDescription: "Old format could not parse; new format fallback used",
-        sheetTargetAttempted: "Bales_Production",
-      });
       const keep = validateNewFormatRecord(row, result, msg, seenProductionBales);
       if (keep) result.standardRecords.push(row);
     }

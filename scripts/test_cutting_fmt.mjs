@@ -141,6 +141,24 @@ CM1-N/A
 CM2-52 Agri
 CM-13 Agri Treads`;
 
+// TEXT14: ambiguous CM-14 Agri after CM2-51 Agri — must NOT merge into CM2, must flag orange
+const TEXT14 = `2025/09/15, 08:00 - Sender: 15/09/2025
+08:00-09:00
+CM1-N/A
+CM2-51 Agri
+CM-14 Agri`;
+
+// TEXT12: CM1 N/A followed by CM2/CM3 parenthesized blocks — CM1 must not inherit LC from CM2
+const TEXT12 = wrap(
+`13/10/2025
+09:00-10:00
+CM1 N/A
+CM2-(HC)=02
+(LC)=21
+CM3-(HC)=00
+(LC)29`
+);
+
 function printRecordsWithLog(label, text) {
   printHeader(label);
   const { records, validationLog } = parseCuttingMessages(text);
@@ -163,3 +181,67 @@ for (const [label, text] of TEXT_CASES) {
 }
 
 printRecordsWithLog("Text 11 — ambiguous CM- line, no inference possible → orange + log", TEXT11);
+
+// TEXT13: CM2 gets two agri lines (second likely belongs to CM3) → yellow flag
+const TEXT13 = wrap(
+`14/10/2025
+13:00-14:00
+CM1-(LC)     =19
+CM2-(HC)    =05
+Agricultural  =16
+Agricultura   =24`
+);
+
+// Text 12 — assertion: CM1 N/A must not inherit LC from CM2's parenthesized block
+printHeader("Text 12 — CM1 N/A followed by CM2/CM3 parenthesized blocks (bug regression)");
+{
+  const { records } = parseCuttingMessages(TEXT12);
+  for (const r of records) console.log(formatRow(r));
+  const cm1 = records.find(r => String(r.cmNumber).includes("1"));
+  const cm2 = records.find(r => String(r.cmNumber).includes("2"));
+  const cm3 = records.find(r => String(r.cmNumber).includes("3"));
+  let pass = true;
+  if (cm1?.radialsLC != null) { console.log(`  FAIL: CM1 radialsLC should be null but got ${cm1.radialsLC}`); pass = false; }
+  if (cm2?.radialsHC !== 2)   { console.log(`  FAIL: CM2 radialsHC should be 2 but got ${cm2?.radialsHC}`); pass = false; }
+  if (cm2?.radialsLC !== 21)  { console.log(`  FAIL: CM2 radialsLC should be 21 but got ${cm2?.radialsLC}`); pass = false; }
+  if (cm3?.radialsLC !== 29)  { console.log(`  FAIL: CM3 radialsLC should be 29 but got ${cm3?.radialsLC}`); pass = false; }
+  if (pass) console.log("  PASS: CM1=N/A, CM2={HC:2,LC:21}, CM3={LC:29}");
+}
+
+// Text 13 — assertion: CM2 gets duplicate agri lines → _duplicateTyreType, CM1 LC intact
+printHeader("Text 13 — duplicate agri lines on CM2, CM1 LC must be intact (yellow flag)");
+{
+  const { records } = parseCuttingMessages(TEXT13);
+  for (const r of records) {
+    const flag = r._duplicateTyreType ? " [YELLOW]" : "";
+    console.log(`${formatRow(r)}${flag}`);
+  }
+  const cm1 = records.find(r => String(r.cmNumber).includes("1"));
+  const cm2 = records.find(r => String(r.cmNumber).includes("2"));
+  let pass = true;
+  if (cm1?.radialsLC !== 19)        { console.log(`  FAIL: CM1 radialsLC should be 19 but got ${cm1?.radialsLC}`); pass = false; }
+  if (cm2?.radialsHC !== 5)         { console.log(`  FAIL: CM2 radialsHC should be 5 but got ${cm2?.radialsHC}`); pass = false; }
+  if (cm2?.radialsAgri !== 40)      { console.log(`  FAIL: CM2 radialsAgri should be 40 but got ${cm2?.radialsAgri}`); pass = false; }
+  if (!cm2?._duplicateTyreType)     { console.log(`  FAIL: CM2 should be flagged _duplicateTyreType`); pass = false; }
+  if (pass) console.log("  PASS: CM1={LC:19}, CM2={HC:5,Agri:40} [YELLOW]");
+}
+
+// Text 14 — assertion: CM-14 Agri must NOT merge into CM2, all rows flagged orange
+printHeader("Text 14 — ambiguous CM-14 Agri must flag orange, CM2 stays at 51 (not 65)");
+{
+  const { records, validationLog } = parseCuttingMessages(TEXT14);
+  for (const r of records) {
+    const flag = r._ambiguousLine ? " [ORANGE]" : "";
+    console.log(`${formatRow(r)}${flag}`);
+  }
+  if (validationLog.length > 0) {
+    console.log("  Validation log:");
+    for (const v of validationLog) console.log(`    ⚠ ${v.issue}`);
+  }
+  const cm2 = records.find(r => String(r.cmNumber).includes("2"));
+  let pass = true;
+  if (cm2?.radialsAgri !== 51)  { console.log(`  FAIL: CM2 radialsAgri should be 51 but got ${cm2?.radialsAgri}`); pass = false; }
+  if (!cm2?._ambiguousLine)     { console.log(`  FAIL: CM2 should be flagged orange`); pass = false; }
+  if (validationLog.length === 0) { console.log(`  FAIL: validationLog should have an entry`); pass = false; }
+  if (pass) console.log("  PASS: CM2={Agri:51} [ORANGE], quantity 14 lost and logged");
+}

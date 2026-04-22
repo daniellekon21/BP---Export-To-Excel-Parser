@@ -414,8 +414,10 @@ export function parseCuttingMessages(text) {
       const intervalBody = interval.lines.join("\n");
 
       // Phase 1: body-level handlers for parenthesised formats
+      // Tracks "cmNum:colName" pairs so Phase 2 skips only the specific columns
+      // already captured here — not all continuation lines for that CM.
+      const phase1Cols = new Set();
       // Format D: CM1-(HC)=17 / (LC)=12  (dual-type, may span two lines)
-      const fmtDCMs = new Set();
       // [^\n]*? = rest of HC line; (?:\n(?!CM\s*\d)[^\n]*?)? = optional next line only if it doesn't start a new CM entry
       const fmtD = /CM\s*(\d)\s*-\s*\(HC\)\s*=?\s*(\d+)[^\n]*?(?:\n(?!CM\s*\d)[^\n]*?)?\(LC\)\s*=?\s*(\d+)/gi;
       while ((m = fmtD.exec(intervalBody)) !== null) {
@@ -425,29 +427,32 @@ export function parseCuttingMessages(text) {
         if (!isNaN(hc) && hc > 0) row.radialsHC = hc;
         if (!isNaN(lc) && lc > 0) row.radialsLC = lc;
         if ((!isNaN(hc) && hc > 0) || (!isNaN(lc) && lc > 0)) hasIntervalProduction = true;
-        fmtDCMs.add(cmNum);
+        phase1Cols.add(`${cmNum}:radialsHC`);
+        phase1Cols.add(`${cmNum}:radialsLC`);
       }
 
       // Single-(HC) lines
       const fmtHC = /CM\s*(\d)\s*-\s*\(HC\)\s*=?\s*(\d+)/gi;
       while ((m = fmtHC.exec(intervalBody)) !== null) {
         const cmNum = parseInt(m[1], 10);
-        if (fmtDCMs.has(cmNum)) continue;
+        if (phase1Cols.has(`${cmNum}:radialsHC`)) continue;
         const count = parseInt(m[2], 10);
         const row = createRow(cmNum);
         if (!isNaN(count)) row.radialsHC = count;
         if (!isNaN(count) && count > 0) hasIntervalProduction = true;
+        phase1Cols.add(`${cmNum}:radialsHC`);
       }
 
       // Single-(LC) lines → RADIALS Light Commercial
       const fmtLC = /CM\s*(\d)\s*-\s*\(LC\)\s*=?\s*(\d+)/gi;
       while ((m = fmtLC.exec(intervalBody)) !== null) {
         const cmNum = parseInt(m[1], 10);
-        if (fmtDCMs.has(cmNum)) continue;
+        if (phase1Cols.has(`${cmNum}:radialsLC`)) continue;
         const count = parseInt(m[2], 10);
         const row = createRow(cmNum);
         if (!isNaN(count)) row.radialsLC = count;
         if (!isNaN(count) && count > 0) hasIntervalProduction = true;
+        phase1Cols.add(`${cmNum}:radialsLC`);
       }
 
       // Phase 2: line-by-line for all other formats.
@@ -460,7 +465,14 @@ export function parseCuttingMessages(text) {
         // Machine line → parse it and update the current CM block
         if (classifyLine(rawLine) === "machine_line") {
           const parsed = parseMachineLine(normalized);
-          if (parsed.length === 0) continue;
+          if (parsed.length === 0) {
+            // parseMachineLine doesn't handle parenthesized formats (e.g. CM2-(HC)=02)
+            // which are already captured by Phase 1. Still update currentCM so that
+            // subsequent continuation lines don't leak to the previous CM.
+            const cmMatch = normalized.match(/CM\s*(\d)/i);
+            if (cmMatch) currentCM = parseInt(cmMatch[1], 10);
+            continue;
+          }
           pendingRecords.push(parsed);
           currentCM = parsed[0].cmNum;
           continue;
@@ -516,6 +528,9 @@ export function parseCuttingMessages(text) {
         }
         if (mc && contRawType !== null && !isNaN(contCount)) {
           const col = mapTyreType(contRawType);
+          // Skip if this specific (CM, column) pair was already captured in Phase 1 —
+          // only that column is guarded, other columns on the same CM still flow through.
+          if (phase1Cols.has(`${currentCM}:${col}`)) continue;
           if (col !== "unknown_type") {
             const lastParsedLine = pendingRecords[pendingRecords.length - 1];
             if (lastParsedLine && lastParsedLine[0]?.cmNum === currentCM) {
@@ -551,7 +566,7 @@ export function parseCuttingMessages(text) {
         const isPureStatus = parsedLine.every(p => p.isStatus && p.count == null);
         if (isPureStatus && cmsWithRealData.has(parsedLine[0].cmNum)) continue;
         const cm = parsedLine[0].cmNum;
-        const row = createRow(cm);
+        const row = machineRows.find(r => r.cmNumber === `CM - ${cm}`) ?? createRow(cm);
         const cmCols = columnsByCm.get(cm);
         const cmInferred = cmCols && cmCols.size === 1 ? [...cmCols][0] : null;
         for (const p of parsedLine) {
@@ -559,6 +574,7 @@ export function parseCuttingMessages(text) {
           let col = p.column;
           if ((col === null || col === "unknown_type") && p.count !== null && cmInferred) col = cmInferred;
           if (col && col !== "unknown_type" && col !== "" && p.count !== null) {
+            if (row[col] != null) row._duplicateTyreType = true;
             row[col] = (row[col] ?? 0) + p.count;
             if (p.count > 0) hasIntervalProduction = true;
           } else if (p.count !== null) {
@@ -604,39 +620,24 @@ export function parseCuttingMessages(text) {
         }
       }
 
-      if (cmsWithCol.size === 1) {
-        // Exactly one CM does this tyre type today → attribute to it
-        const cmNum = [...cmsWithCol][0];
-        const cmLabel = `CM - ${cmNum}`;
-        const existing = records.find(r =>
-          dk(r.date) === dateStr && r.cmNumber === cmLabel &&
-          r.startTime === u.startTime && r.finishTime === u.finishTime
-        );
-        if (existing) {
-          existing[u.col] = (existing[u.col] ?? 0) + u.count;
-        } else {
-          const row = makeMachineRow(u.date, cmLabel, u.series, u.startTime, u.finishTime, "", u.rawMessage);
-          row[u.col] = u.count;
-          records.push(row);
+      // Never infer the machine from context — always flag orange and log.
+      // A "CM-{count} {type}" line without a machine digit is always ambiguous,
+      // even if only one machine does that tyre type today.
+      for (const r of records) {
+        if (dk(r.date) === dateStr && r.startTime === u.startTime && r.finishTime === u.finishTime) {
+          r._ambiguousLine = true;
         }
-      } else {
-        // Can't infer → mark ALL rows of this interval orange, lose the qty, log it
-        for (const r of records) {
-          if (dk(r.date) === dateStr && r.startTime === u.startTime && r.finishTime === u.finishTime) {
-            r._ambiguousLine = true;
-          }
-        }
-        const candidates = cmsWithCol.size === 0 ? "none" : [...cmsWithCol].map(n => `CM${n}`).join(", ");
-        validationLog.push({
-          date: u.date,
-          time: `${formatTime(u.startTime)}-${formatTime(u.finishTime)}`,
-          messageType: "hourly",
-          cutter: "CM - ?",
-          issue: `Ambiguous CM line — could not infer machine for "${u.rawType}" (${u.count} tyres). Candidates: ${candidates}`,
-          action: "Rows coloured orange. Quantity lost — assign manually.",
-          rawText: u.rawMessage,
-        });
       }
+      const candidates = cmsWithCol.size === 0 ? "none" : [...cmsWithCol].map(n => `CM${n}`).join(", ");
+      validationLog.push({
+        date: u.date,
+        time: `${formatTime(u.startTime)}-${formatTime(u.finishTime)}`,
+        messageType: "hourly",
+        cutter: "CM - ?",
+        issue: `Ambiguous CM line — could not identify machine for "${u.rawType}" (${u.count} tyres). Candidates: ${candidates}`,
+        action: "Rows coloured orange. Quantity lost — assign manually.",
+        rawText: u.rawMessage,
+      });
     }
   }
 

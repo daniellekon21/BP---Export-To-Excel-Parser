@@ -44,6 +44,7 @@ const EXAMPLE_PROD_HEADER_ROW3 = (() => {
   row[11] = "PCR";     // L3
   row[15] = "RADIALS"; // P3
   row[25] = "NYLONS";  // Z3
+  row[27] = "OTHERS";  // AB3
   return row;
 })();
 
@@ -204,23 +205,28 @@ function addProductionGroupedHeader(ws) {
   // Match template behavior: sublabels are centered across grouped blocks.
   ws.mergeCells(3, 12, 3, 15); // L3:O3 -> PCR
   ws.mergeCells(3, 16, 3, 25); // P3:Y3 -> RADIALS
-  ws.mergeCells(3, 26, 3, 28); // Z3:AB3 -> NYLONS
+  ws.mergeCells(3, 26, 3, 27); // Z3:AA3 -> NYLONS
 }
 
 function styleProductionHeader(ws, styles) {
   const thin = styles.thinBlack;
   const medium = styles.mediumBlack;
-  const groupStarts = new Set([2, 12, 16, 26, 29]); // B, L, P, Z, AC
-  const groupEnds = new Set([11, 15, 25, 28, 32]); // K, O, Y, AB, AF
+  const pcrFill = { argb: "FFEF847C" };
+  const defaultFill = { theme: 4, tint: 0.7999511703848384 };
+  const othersFill = { argb: "FF93CDDD" };
+  const groupStarts = new Set([2, 12, 16, 26, 28, 29]); // B, L, P, Z, AB, AC
+  const groupEnds = new Set([11, 15, 25, 27, 28, 32]); // K, O, Y, AA, AB, AF
 
   const fills = [
-    { from: 2, to: 15, fgColor: { theme: 4, tint: 0.7999511703848384 } }, // B:O light blue
+    { from: 2, to: 11, fgColor: defaultFill }, // B:K metadata gray-blue
+    { from: 12, to: 15, fgColor: pcrFill }, // L:O PCR coral
     { from: 16, to: 25, fgColor: { argb: "FFE97132" } }, // P:Y RADIALS
-    { from: 26, to: 28, fgColor: { argb: "FF0D8ABA" } }, // Z:AB NYLONS
-    { from: 29, to: 32, fgColor: { theme: 4, tint: 0.7999511703848384 } }, // AC:AF same as PCR
+    { from: 26, to: 27, fgColor: { argb: "FF0D8ABA" } }, // Z:AA NYLONS
+    { from: 28, to: 28, fgColor: othersFill }, // AB OTHERS / Tubes
+    { from: 29, to: 32, fgColor: defaultFill }, // AC:AF default gray-blue
   ];
 
-  const fillForCol = (col) => fills.find((f) => col >= f.from && col <= f.to)?.fgColor || { theme: 4, tint: 0.7999511703848384 };
+  const fillForCol = (col) => fills.find((f) => col >= f.from && col <= f.to)?.fgColor || defaultFill;
 
   ws.getRow(2).height = 48;
   ws.getRow(3).height = 17;
@@ -229,11 +235,12 @@ function styleProductionHeader(ws, styles) {
     for (let col = 2; col <= 32; col += 1) {
       const cell = ws.getRow(row).getCell(col);
       const isRadials = col >= 16 && col <= 25;
-      const isNylons = col >= 26 && col <= 28;
+      const isNylons = col >= 26 && col <= 27;
+      const isOthers = col === 28;
       cell.font = {
         bold: true,
         size: 11,
-        color: (isRadials || isNylons) ? { argb: "FF000000" } : { theme: 1 },
+        color: isOthers || isRadials || isNylons ? { argb: "FF000000" } : { theme: 1 },
         name: "Aptos Narrow",
         family: 2,
         scheme: "minor",
@@ -253,6 +260,42 @@ function styleProductionHeader(ws, styles) {
 function applyNumericFormatting(ws, numericColumns) {
   for (const col of numericColumns) {
     ws.getColumn(col).numFmt = "0";
+  }
+}
+
+function applyOuterThickBorder(ws, fromRow, fromCol, toRow, toCol) {
+  const thickBlack = { style: "thick", color: { argb: "FF000000" } };
+
+  for (let row = fromRow; row <= toRow; row += 1) {
+    for (let col = fromCol; col <= toCol; col += 1) {
+      const cell = ws.getRow(row).getCell(col);
+      const next = { ...(cell.border || {}) };
+      if (row === fromRow) next.top = thickBlack;
+      if (row === toRow) next.bottom = thickBlack;
+      if (col === fromCol) next.left = thickBlack;
+      if (col === toCol) next.right = thickBlack;
+      cell.border = next;
+    }
+  }
+}
+
+function styleProductionTotalsRow(ws) {
+  const rowIndex = ws.rowCount;
+  if (rowIndex < 4) return;
+
+  const thickBlack = { style: "thick", color: { argb: "FF000000" } };
+  const grayFill = { type: "pattern", pattern: "solid", fgColor: { argb: "FFD9D9D9" } };
+
+  for (let col = 2; col <= 32; col += 1) {
+    const cell = ws.getRow(rowIndex).getCell(col);
+    cell.font = { ...(cell.font || {}), bold: true };
+    cell.fill = grayFill;
+    cell.border = {
+      top: thickBlack,
+      bottom: thickBlack,
+      left: col === 2 ? thickBlack : (cell.border?.left || { style: "thin", color: { argb: "FFD1D5DB" } }),
+      right: col === 32 ? thickBlack : (cell.border?.right || { style: "thin", color: { argb: "FFD1D5DB" } }),
+    };
   }
 }
 
@@ -1219,6 +1262,8 @@ export async function createBalingWorkbook(data = {}) {
     if (monthSheets.includes(ws)) {
       styleProductionHeader(ws, styles);
       styleBodyRows(ws, 4, ws.rowCount, styles.baseBorder);
+      styleProductionTotalsRow(ws);
+      applyOuterThickBorder(ws, 2, 2, ws.rowCount, 32);
       ws.views = [{ state: "frozen", xSplit: 1, ySplit: 3, topLeftCell: "B4" }];
       ws.autoFilter = { from: { row: 2, column: 2 }, to: { row: 2, column: 32 } };
     } else if (dsSheets.includes(ws)) {
@@ -1227,6 +1272,7 @@ export async function createBalingWorkbook(data = {}) {
     } else {
       styleHeaderRow(ws.getRow(1), styles, false);
       styleBodyRows(ws, 2, ws.rowCount, styles.baseBorder);
+      applyOuterThickBorder(ws, 1, 1, ws.rowCount, ws.columnCount);
       ws.views = [{ state: "frozen", ySplit: 1 }];
       ws.autoFilter = { from: { row: 1, column: 1 }, to: { row: 1, column: ws.columnCount } };
     }

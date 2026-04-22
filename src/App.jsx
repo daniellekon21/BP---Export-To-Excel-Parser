@@ -90,6 +90,16 @@ function filterValidationLog(logEntries, mode, filterYear, filterPeriod) {
   });
 }
 
+function sanitizeValidationLogEntries(logEntries) {
+  return (logEntries || []).filter((entry) => {
+    const issueType = String(entry?.issueType || entry?.messageType || "").toUpperCase();
+    const problemDescription = String(entry?.problemDescription || entry?.issue || "").toLowerCase();
+    if (issueType === "PARSER_FALLBACK_USED") return false;
+    if (problemDescription.includes("fallback used")) return false;
+    return true;
+  });
+}
+
 function emptyBalingData() {
   return {
     standardRecords: [],
@@ -104,8 +114,8 @@ function emptyBalingData() {
 
 export default function App() {
   const [chatType, setChatType] = useState(null);
-  const [cuttingMode, setCuttingMode] = useState("old");
-  const [balingMode, setBalingMode] = useState("old");
+  const [cuttingMode, setCuttingMode] = useState("new");
+  const [balingMode, setBalingMode] = useState("new");
   const [chatText, setChatText] = useState("");
   const [records, setRecords] = useState([]);
   const [summaryRecords, setSummaryRecords] = useState([]);
@@ -240,19 +250,19 @@ export default function App() {
       setBalingData(parsedBaling);
       setRecords(parsedBaling.allRecords);
       setSummaryRecords(parsedBaling.summaryRecords);
-      setValidationLog(parsedBaling.validationLog);
+      setValidationLog(sanitizeValidationLogEntries(parsedBaling.validationLog));
     } else if (cuttingMode === "new") {
       const parsedCutting = parseCuttingMessagesNew(chatText);
       setBalingData(emptyBalingData());
       setRecords(parsedCutting.records);
       setSummaryRecords(parsedCutting.summaryRecords);
-      setValidationLog(parsedCutting.validationLog);
+      setValidationLog(sanitizeValidationLogEntries(parsedCutting.validationLog));
     } else {
       const parsedCutting = parseCuttingMessages(chatText);
       setBalingData(emptyBalingData());
       setRecords(parsedCutting.records);
       setSummaryRecords(parsedCutting.summaryRecords);
-      setValidationLog(parsedCutting.validationLog);
+      setValidationLog(sanitizeValidationLogEntries(parsedCutting.validationLog));
     }
 
     setParsed(true);
@@ -290,8 +300,8 @@ export default function App() {
 
   const handleReset = () => {
     setChatType(null);
-    setCuttingMode("old");
-    setBalingMode("old");
+    setCuttingMode("new");
+    setBalingMode("new");
     setChatText("");
     setRecords([]);
     setSummaryRecords([]);
@@ -504,6 +514,16 @@ export default function App() {
           </div>
 
           {exportScopeWarning && <p style={{ margin: "-8px 0 12px", fontSize: 12, color: "#B45309" }}>⚠ {exportScopeWarning}</p>}
+
+          {chatType === "cutting" && (
+            <div style={{ padding: "10px 16px", background: "white", borderRadius: 12, border: "1px solid #E5E7EB", fontSize: 12, color: "#374151", display: "flex", flexWrap: "wrap", gap: "10px", alignItems: "center" }}>
+              <strong>Highlight key:</strong>
+              <span><span style={{ background: "#D5F5E3", padding: "1px 8px", borderRadius: 4 }}>Green</span> — tyre type inferred from context</span>
+              <span><span style={{ background: "#FADBD8", padding: "1px 8px", borderRadius: 4 }}>Pink</span> — tyre count could not be resolved</span>
+              <span><span style={{ background: "#FCE5CC", padding: "1px 8px", borderRadius: 4 }}>Orange</span> — machine number could not be determined</span>
+              <span><span style={{ background: "#FFF9C4", padding: "1px 8px", borderRadius: 4 }}>Yellow</span> — same tyre type recorded twice for one machine (check if second entry belongs to the next machine)</span>
+            </div>
+          )}
 
           <div style={{ background: "white", borderRadius: 16, border: "1px solid #E5E7EB", overflow: "auto", boxShadow: "0 1px 3px rgba(0,0,0,0.04)" }}>
             {chatType === "baling"

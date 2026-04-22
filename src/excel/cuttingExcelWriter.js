@@ -228,7 +228,7 @@ export async function downloadCuttingWorkbook(records, filename, extras = {}) {
     const monthRecords = byMonth[key] || [];
     const monthSummary = summaryByMonth[key] || [];
 
-    const { rows, unresolvedIndices, inferredIndices, ambiguousIndices } = cuttingSheetRows(monthRecords);
+    const { rows, unresolvedIndices, inferredIndices, ambiguousIndices, duplicateTyreIndices } = cuttingSheetRows(monthRecords);
     let hasCuttingTotalsRow = false;
 
     if (rows.length >= 2) {
@@ -351,6 +351,17 @@ export async function downloadCuttingWorkbook(records, filename, extras = {}) {
       const row = ws.getRow(excelRow);
       for (let c = 1; c <= 12; c += 1) {
         row.getCell(c).fill = { type: "pattern", pattern: "solid", fgColor: { argb: lightOrangePastel } };
+      }
+    }
+
+    // Highlight rows where the same tyre type was recorded twice for the same machine
+    // in pastel yellow — likely a missing CM header before the second entry
+    const lightYellowPastel = "FFFFF9C4";
+    for (const idx of duplicateTyreIndices) {
+      const excelRow = dataStartRow + idx;
+      const row = ws.getRow(excelRow);
+      for (let c = 1; c <= 12; c += 1) {
+        row.getCell(c).fill = { type: "pattern", pattern: "solid", fgColor: { argb: lightYellowPastel } };
       }
     }
 
