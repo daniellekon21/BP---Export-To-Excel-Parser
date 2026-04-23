@@ -2,9 +2,11 @@ import { useState, useCallback, useRef, useMemo } from "react";
 import { dateToStr, monthLabel, MONTH_NAMES } from "./helpers.js";
 import { parseCuttingMessages, parseCuttingMessagesNew } from "./parsing/cuttingParser.js";
 import { parseBalingMessagesNew, parseBalingMessagesOldWithFallback } from "./parsing/balingParserNew.js";
+import { parseDeliveriesMessages } from "./parsing/deliveriesParser.js";
 import { downloadWorkbook } from "./excel/downloadWorkbook.js";
 import CuttingResultsTable from "./components/CuttingResultsTable.jsx";
 import BalingResultsTable from "./components/BalingResultsTable.jsx";
+import DeliveriesResultsTable from "./components/DeliveriesResultsTable.jsx";
 
 function getQuarter(month) {
   return Math.ceil(month / 3);
@@ -251,6 +253,12 @@ export default function App() {
       setRecords(parsedBaling.allRecords);
       setSummaryRecords(parsedBaling.summaryRecords);
       setValidationLog(sanitizeValidationLogEntries(parsedBaling.validationLog));
+    } else if (chatType === "deliveries") {
+      const parsedDeliveries = parseDeliveriesMessages(chatText);
+      setBalingData(emptyBalingData());
+      setRecords(parsedDeliveries.records);
+      setSummaryRecords([]);
+      setValidationLog(sanitizeValidationLogEntries(parsedDeliveries.validationLog));
     } else if (cuttingMode === "new") {
       const parsedCutting = parseCuttingMessagesNew(chatText);
       setBalingData(emptyBalingData());
@@ -269,7 +277,11 @@ export default function App() {
   };
 
   const handleDownload = async () => {
-    const defaultFilename = chatType === "baling" ? defaultBalingFilename : "BPR_Cutting_Data.xlsx";
+    const defaultFilename = chatType === "baling"
+      ? defaultBalingFilename
+      : chatType === "deliveries"
+        ? "BPR_Deliveries.xlsx"
+        : "BPR_Cutting_Data.xlsx";
     const cleaned = String(exportFileName || "")
       .trim()
       .replace(/[\\/:*?"<>|]/g, "")
@@ -337,6 +349,7 @@ export default function App() {
           {[
             { id: "baling", icon: "📦", title: "Production (Baling)", desc: "Bale reports with weights, operators & tyre counts" },
             { id: "cutting", icon: "✂️", title: "Cutting Data", desc: "Hourly cutting machine counts per tyre type" },
+            { id: "deliveries", icon: "🚚", title: "Deliveries", desc: "Truck deliveries with depot, transporter & tyre counts" },
           ].map((opt) => (
             <button
               key={opt.id}
@@ -366,7 +379,7 @@ export default function App() {
               ← Back
             </button>
             <span style={{ color: "#D1D5DB" }}>|</span>
-            <span style={{ fontSize: 14, fontWeight: 600 }}>{chatType === "baling" ? "📦 Production (Baling)" : "✂️ Cutting Data"}</span>
+            <span style={{ fontSize: 14, fontWeight: 600 }}>{chatType === "baling" ? "📦 Production (Baling)" : chatType === "deliveries" ? "🚚 Deliveries" : "✂️ Cutting Data"}</span>
           </div>
 
           {chatType === "cutting" && (
@@ -528,7 +541,9 @@ export default function App() {
           <div style={{ background: "white", borderRadius: 16, border: "1px solid #E5E7EB", overflow: "auto", boxShadow: "0 1px 3px rgba(0,0,0,0.04)" }}>
             {chatType === "baling"
               ? <BalingResultsTable records={visibleRecords} />
-              : <CuttingResultsTable records={visibleRecords} />}
+              : chatType === "deliveries"
+                ? <DeliveriesResultsTable records={visibleRecords} />
+                : <CuttingResultsTable records={visibleRecords} />}
             {visibleRecords.length > 100 && <p style={{ textAlign: "center", padding: 12, fontSize: 12, color: mutedText }}>Showing first 100 of {visibleRecords.length} records. All {visibleRecords.length} will be included in the download.</p>}
           </div>
 

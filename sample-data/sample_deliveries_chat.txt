@@ -1,0 +1,50 @@
+2026/03/30, 08:15 - Driver: 30/03/2026
+Truck #: 1
+WBD: 2231
+GRV: 0936
+Depot: Thohoyandou
+Depot Manager: Adolf
+Collection #: 23781
+Transporter: Lehari
+Agricultural - 210
+*Total -*210*
+2026/03/30, 14:22 - Driver: 30/03/2026
+Truck #: 2
+WBD: 2232
+GRV: 0937
+Depot: Polokwane
+Depot Manager: Thabo
+Collection #: 23782
+Transporter: Lehari
+Passenger - 40
+4 x 4 - 12
+Light Commercial - 30
+Heavy Commercial - 8
+*Total -*90*
+2026/03/31, 09:05 - Driver: 31/03/2026
+Truck #: 3
+WBD: 2240
+GRV: 0941
+Depot: Thohoyandou
+Depot Manager: Adolf
+Collection #: 23790
+Transporter: Nkuna
+Motorcycle - 15
+Heavy Commercial SW - 22
+Heavy Commercial T - 18
+Agricultural - 50
+*Total -*105*
+2026/04/02, 10:30 - Driver: 02/04/2026
+Truck #: 4
+WBD: 2245
+GRV: 0948
+Depot: Giyani
+Depot Manager: Naledi
+Collection #: 23801
+Transporter: Lehari
+Passenger - 25
+Motorcycle - 5
+Light Commercial - 60
+Heavy Commercial - 12
+Heavy Commercial SW - 7
+*Total -*109*

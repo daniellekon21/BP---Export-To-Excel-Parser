@@ -2,6 +2,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { parseCuttingMessages, parseCuttingMessagesNew } from "./src/parsing/cuttingParser.js";
 import { parseBalingMessages } from "./src/parsing/balingParser.js";
+import { parseDeliveriesMessages } from "./src/parsing/deliveriesParser.js";
 
 function arg(name, fallback = "") {
   const found = process.argv.find((a) => a.startsWith(`--${name}=`));
@@ -30,6 +31,9 @@ let parsed;
 if (type === "baling") {
   parsed = parseBalingMessages(text);
   console.log(`Baling parsed: ${parsed.allRecords.length} records (${parsed.standardRecords.length} standard, ${parsed.failedRecords.length} failed, ${parsed.scrapRecords.length} scrap, ${parsed.crcaRecords.length} CR/CA, ${parsed.summaryRecords.length} summaries)`);
+} else if (type === "deliveries") {
+  parsed = parseDeliveriesMessages(text);
+  console.log(`Deliveries parsed: ${parsed.records.length} records, ${parsed.validationLog.length} validation entries`);
 } else {
   parsed = format === "new" ? parseCuttingMessagesNew(text) : parseCuttingMessages(text);
   console.log(`Cutting parsed: ${parsed.records.length} records, ${parsed.summaryRecords.length} summaries, ${parsed.validationLog.length} validation entries`);
