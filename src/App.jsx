@@ -341,7 +341,7 @@ export default function App() {
         <div style={{ display: "inline-flex", alignItems: "center", gap: 12, marginBottom: 12 }}>
           <img src="/logo.png" alt="Blue Pyramid" style={{ height: 56, objectFit: "contain" }} />
         </div>
-        <p style={{ fontSize: 15, color: mutedText, margin: 0, lineHeight: 1.5 }}>My gift to my baby, I love you 🩵💙💜</p>
+        <p style={{ fontSize: 15, color: mutedText, margin: 0, lineHeight: 1.5 }}>🩵💙💜</p>
       </div>
 
       {!chatType && (
